@@ -180,5 +180,54 @@ Each significant entry records:
 - **Corrections or rejected suggestions**: Corrected earlier assumption of using `ON DELETE RESTRICT` for deal deletion. Soft deletion with an append-only `DELETED` event is now the authoritative model.
 - **Final outcome**: All five documentation files are 100% harmonized, accurate, and ready for Phase 2 implementation upon user command.
 
+---
+
+## 2026-09-10 - Prompt 06 - Phase 2: Database Schema, Migration & Reproducible Seed Execution
+
+- **Problem / Task**: Implement Phase 2 database layer: Prisma schema for all 8 documented models, create and apply PostgreSQL migration to Supabase, create and run an idempotent seed script, and validate the resulting database.
+- **User Intent**:
+  - Implement models: `Organization`, `Team`, `User`, `Company`, `Deal`, `DealCollaborator`, `DealHistory`, `DealAlert`.
+  - Exact decimal money (`DECIMAL(14,2)`) for `Deal.value`.
+  - Calendar DATE (`@db.Date`) for `Deal.expectedCloseDate` and `DealAlert.dismissedCloseDate`.
+  - Soft delete columns (`deletedAt`, `deletedById`) on `Deal`.
+  - Enums: `UserRole` (`MANAGER`, `SALES_REP`), `DealStage` (`NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST`), and `HistoryType` (`CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, `REOPENED`, `DELETED`).
+  - No application routes, controllers, or Phase 3+ code.
+- **Prompt sent to IDE / Code Assistant**:
+  > *"PHASE 2 — DATABASE SCHEMA, MIGRATION & REPRODUCIBLE SEED. Implement ONLY Phase 2: 1. Prisma database schema 2. Prisma migration(s) 3. Reproducible/idempotent demo seed 4. Minimal Prisma/package configuration 5. Validation of resulting database. DO NOT implement Phase 3 or any application functionality."*
+- **What IDE / Code Assistant implemented**:
+  - `backend/prisma/schema.prisma`:
+    - All 8 models with UUID primary keys and declarative foreign keys.
+    - Explicit relation names for unambiguous reverse relations.
+    - Exact `Decimal(14,2)` for `Deal.value`.
+    - Calendar `DATE` (`@db.Date`) for `Deal.expectedCloseDate` and `DealAlert.dismissedCloseDate`.
+    - Soft-delete fields (`deletedAt: DateTime?`, `deletedById: String?`) on `Deal`.
+    - Composite primary key on `DealCollaborator(dealId, userId)`.
+    - Append-only `DealHistory` with `HistoryType` enum (including `DELETED`).
+    - All documented composite indexes on `Deal`, `Company`, and `DealHistory`.
+  - Executed `npx prisma format` and `npx prisma validate` (passed).
+  - Executed `npx prisma migrate dev --name init_sales_crm`:
+    - Migration `20260910081454_init_sales_crm` applied cleanly to Supabase PostgreSQL.
+    - Prisma Client v6.19.3 generated.
+  - `backend/package.json`:
+    - Added `"seed": "prisma db seed"` and `"prisma": { "seed": "tsx prisma/seed.ts" }`.
+  - `backend/prisma/seed.ts`:
+    - Deterministic, idempotent seed script using stable UUIDs and `upsert` operations.
+    - Seeded: 1 Organization, 1 Team, 4 Users (1 Manager, 3 Reps with hashed password `Password123!`), 8 Companies (7 active, 1 archived), 18 Deals across all stages (1 soft-deleted in Trash), 6 Collaborators (Deal 3 with multiple reps), 46 immutable history events (every deal has CREATED, forward/backward stage changes with reasons, reassignment, notes, reopen, DELETED), and 2 overdue deals (1 active alert, 1 dismissed alert).
+  - Ran `npm run seed` twice consecutively, confirming 100% idempotency.
+  - Ran comprehensive validation script verifying all counts, constraints, stage distributions, and soft-delete invariants.
+  - Verified backend TypeScript compilation (`npx tsc --noEmit`) and tests (`vitest run`).
+  - Updated `docs/plan.md` marking Phase 2 as completed and Phase 3 as next.
+- **Human review / testing**:
+  - `prisma format`: 0 errors.
+  - `prisma validate`: Schema is valid.
+  - `prisma migrate dev`: Applied `20260910081454_init_sales_crm` with exit code 0.
+  - `npm run seed` (pass 1): 18 deals, 46 history events seeded with exit code 0.
+  - `npm run seed` (pass 2): 100% idempotent with exit code 0.
+  - Database validation: 1 Org, 1 Team, 4 Users, 8 Companies, 18 Deals, 6 Collaborations, 46 History events, 2 Overdue deals.
+  - TypeScript & Vitest: Both passed cleanly.
+- **Corrections or rejected suggestions**: None.
+- **Final outcome**: Phase 2 is completely implemented, verified, and operational in Supabase PostgreSQL.
+
+
 
 

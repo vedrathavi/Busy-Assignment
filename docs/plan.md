@@ -46,22 +46,22 @@ graph TD
 - *Status*: **COMPLETED**
 
 ### Phase 2: Database Schema, Migrations & Demo Seed Data
-- [ ] Implement complete Prisma schema (`Organization`, `Team`, `User`, `Company`, `Deal`, `DealCollaborator`, `DealHistory`, `DealAlert`).
-- [ ] Configure `Deal.deletedAt` (`DateTime?`) and `Deal.deletedById` (`String?`) for application-level soft deletion.
-- [ ] Configure `Deal.expectedCloseDate` and `DealAlert.dismissedCloseDate` as `DateTime @db.Date` (PostgreSQL `DATE`).
-- [ ] Configure `HistoryType` enum including `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, `REOPENED`, and `DELETED`.
-- [ ] Configure PostgreSQL enums, foreign keys, cascade rules for collaborators/alerts, and composite indexes (`@@index([teamId, deletedAt])`).
-- [ ] Run Prisma migration against Supabase database (`npx prisma migrate dev`).
-- [ ] Create reproducible database seed script (`prisma/seed.ts`) populating:
+- [x] Implement complete Prisma schema (`Organization`, `Team`, `User`, `Company`, `Deal`, `DealCollaborator`, `DealHistory`, `DealAlert`).
+- [x] Configure `Deal.deletedAt` (`DateTime?`) and `Deal.deletedById` (`String?`) for application-level soft deletion.
+- [x] Configure `Deal.expectedCloseDate` and `DealAlert.dismissedCloseDate` as `DateTime @db.Date` (PostgreSQL `DATE`).
+- [x] Configure `HistoryType` enum including `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, `REOPENED`, and `DELETED`.
+- [x] Configure PostgreSQL enums, foreign keys, cascade rules for collaborators/alerts, and composite indexes (`@@index([teamId, deletedAt])`).
+- [x] Run Prisma migration against Supabase database (`npx prisma migrate dev`).
+- [x] Create reproducible database seed script (`prisma/seed.ts`) populating:
   - 1 Organization ("Busy Infotech") & 1 Team ("Enterprise Sales Team").
   - 1 Sales Manager & 3 Sales Reps with hashed demo passwords.
-  - 6+ Companies across various industries.
-  - 15+ Active deals across all stages (`NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST`).
-  - Soft-deleted deal(s) in Trash demonstrating intact historical timelines and `DELETED` events.
-  - Deals with multiple collaborators.
-  - Full immutable timeline events for historical deals.
-  - Overdue deals with and without dismissals for alert testing.
-- *Status*: **IN PROGRESS / NEXT**
+  - 8 Companies (7 active, 1 archived) across various industries.
+  - 18 Deals across all stages (`NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST`).
+  - 1 Soft-deleted deal in Trash demonstrating intact historical timelines and `DELETED` event.
+  - 6 Collaborator links across deals (multiple reps collaborating on the same deal).
+  - 46 Full immutable timeline events for historical deals (CREATED, STAGE_CHANGED, backward reasons, OWNER_CHANGED, NOTE_ADDED, REOPENED, DELETED).
+  - 2 Overdue deals (1 active alert, 1 dismissed alert) for alert testing.
+- *Status*: **COMPLETED**
 
 ### Phase 3: Authentication & Server-Side Authorization Module
 - [ ] User login endpoint (`POST /api/auth/login`) with bcrypt verification.
@@ -69,7 +69,7 @@ graph TD
 - [ ] Current user session endpoint (`GET /api/auth/me`).
 - [ ] Role authorization guard (`requireRole(['MANAGER', 'SALES_REP'])`).
 - [ ] Unit tests for authentication and role rejection.
-- *Status*: **PENDING**
+- *Status*: **IN PROGRESS / NEXT**
 
 ### Phase 4: Companies Module
 - [ ] Company validation schemas (`company.validator.ts`).
@@ -190,6 +190,7 @@ We built **database-first and backend-first**:
 
 ### What did you estimate versus what it actually took?
 - *Foundation & Architecture (Phase 0-1)*: Estimated 2.5 hours, took ~2 hours.
+- *Database Schema, Migrations & Seed (Phase 2)*: Estimated 1.5 hours, took ~1 hour.
 - *(Remaining phases to be updated as completed)*.
 
 ### What did you cut when you ran short?

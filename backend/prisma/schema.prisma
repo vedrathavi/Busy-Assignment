@@ -1,5 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma schema for Sales CRM
+// Database: PostgreSQL (Supabase)
+// Modeled exactly according to docs/schema.md
 
 generator client {
   provider = "prisma-client-js"
@@ -9,4 +10,175 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+// --------------------------------------------------
+// Enums
+// --------------------------------------------------
+
+enum UserRole {
+  MANAGER
+  SALES_REP
+}
+
+enum DealStage {
+  NEW
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum HistoryType {
+  CREATED
+  STAGE_CHANGED
+  OWNER_CHANGED
+  NOTE_ADDED
+  REOPENED
+  DELETED
+}
+
+// --------------------------------------------------
+// Core Models
+// --------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams Team[]
+  users User[]
+}
+
+model Team {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String   @db.VarChar(255)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users        User[]
+  companies    Company[]
+  deals        Deal[]
+}
+
+model User {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  teamId         String   @db.Uuid
+  name           String   @db.VarChar(255)
+  email          String   @unique @db.VarChar(255)
+  passwordHash   String   @db.VarChar(255)
+  role           UserRole
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  ownedCompanies  Company[]          @relation("CompanyOwner")
+  ownedDeals      Deal[]             @relation("DealOwner")
+  deletedDeals    Deal[]             @relation("DealDeletedBy")
+  collaborations  DealCollaborator[]
+  historyActions  DealHistory[]      @relation("HistoryActor")
+  historyOldOwner DealHistory[]      @relation("HistoryOldOwner")
+  historyNewOwner DealHistory[]      @relation("HistoryNewOwner")
+}
+
+model Company {
+  id         String   @id @default(uuid()) @db.Uuid
+  teamId     String   @db.Uuid
+  ownerId    String   @db.Uuid
+  name       String   @db.VarChar(255)
+  industry   String   @db.VarChar(100)
+  website    String?  @db.VarChar(255)
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  team  Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  owner User   @relation("CompanyOwner", fields: [ownerId], references: [id])
+  deals Deal[]
+
+  @@index([teamId, isArchived])
+  @@index([ownerId])
+  @@index([name])
+}
+
+model Deal {
+  id                String     @id @default(uuid()) @db.Uuid
+  teamId            String     @db.Uuid
+  companyId         String     @db.Uuid
+  ownerId           String     @db.Uuid
+  title             String     @db.VarChar(255)
+  value             Decimal    @db.Decimal(14, 2)
+  expectedCloseDate DateTime   @db.Date
+  stage             DealStage  @default(NEW)
+  closedAt          DateTime?
+  previousStage     DealStage?
+  deletedAt         DateTime?
+  deletedById       String?    @db.Uuid
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id])
+  owner     User    @relation("DealOwner", fields: [ownerId], references: [id])
+  deletedBy User?   @relation("DealDeletedBy", fields: [deletedById], references: [id])
+
+  collaborators DealCollaborator[]
+  history       DealHistory[]
+  alert         DealAlert?
+
+  @@index([teamId, deletedAt])
+  @@index([teamId, stage])
+  @@index([ownerId])
+  @@index([companyId])
+  @@index([expectedCloseDate])
+  @@index([updatedAt])
+}
+
+model DealCollaborator {
+  dealId    String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([dealId, userId])
+  @@index([userId])
+}
+
+model DealHistory {
+  id         String      @id @default(uuid()) @db.Uuid
+  dealId     String      @db.Uuid
+  actorId    String      @db.Uuid
+  type       HistoryType
+  oldStage   DealStage?
+  newStage   DealStage?
+  oldOwnerId String?     @db.Uuid
+  newOwnerId String?     @db.Uuid
+  reason     String?     @db.Text
+  note       String?     @db.Text
+  createdAt  DateTime    @default(now())
+
+  deal     Deal  @relation(fields: [dealId], references: [id])
+  actor    User  @relation("HistoryActor", fields: [actorId], references: [id])
+  oldOwner User? @relation("HistoryOldOwner", fields: [oldOwnerId], references: [id])
+  newOwner User? @relation("HistoryNewOwner", fields: [newOwnerId], references: [id])
+
+  @@index([dealId, createdAt(sort: Desc)])
+}
+
+model DealAlert {
+  dealId             String   @id @db.Uuid
+  dismissedCloseDate DateTime @db.Date
+  dismissedAt        DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 }
