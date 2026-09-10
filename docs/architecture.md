@@ -194,6 +194,10 @@ flowchart TD
     DealCheck -- Yes --> AllowDeal[Allow Access]
     DealCheck -- No --> DenyDeal[403 Forbidden / 404 Not Found]
     
+    RepAccess -- Delete Deal --> DeleteCheck{Is Deal Owner?}
+    DeleteCheck -- Yes --> SoftDeleteDeal[Soft-Delete Deal & Append DELETED History Event]
+    DeleteCheck -- No --> DenyDelete[403 Forbidden - Only Owner or Manager Can Delete]
+    
     RepAccess -- Manage Collaborators --> CollabCheck{Is Deal Owner?}
     CollabCheck -- Yes --> AllowCollab[Allow Add/Remove]
     CollabCheck -- No --> DenyCollab[403 Forbidden - Collaborators Cannot Manage Collaborators]
@@ -203,24 +207,37 @@ flowchart TD
     CompCheck -- No --> DenyComp[403 Forbidden / 404 Not Found]
 ```
 
+### Deal Deletion & Trash Visibility Architecture
+To honor both **Goal 3** (*"Deals can be created, edited, and deleted"*) and **Goal 9** (*"History you cannot rewrite. Nothing in this timeline can be edited or deleted after the fact"*):
+1. **State-Based Soft Deletion**: "Deleting a deal" means changing its lifecycle visibility state, not physically dropping rows. The database record is retained with `deletedAt = NOW()` and `deletedById = req.user.id`.
+2. **Immutable Deletion Audit Event**: Deleting a deal appends an immutable `DELETED` record to `DealHistory`, recording who deleted the deal (`actorId`) and when (`createdAt`). Previous history events are never deleted or truncated.
+3. **Active vs. Deleted (Trash) Views**:
+   - **Active Views**: Pipelines, company detail deal lists, search, filters, CSV exports, and dashboard metrics exclude deleted deals by default (`WHERE "deletedAt" IS NULL`).
+   - **Deleted / Trash View**: Dedicated view querying deleted deals (`WHERE "deletedAt" IS NOT NULL`). Users can identify the deal, its company, deletion date, and deleting actor. Opening a deleted deal in Trash still allows its complete immutable timeline to be inspected.
+4. **Planned Restore Capability**: The architecture leaves clean room for a future restore action from Trash. Detailed restore permissions and API behaviors are marked **TBD** and not prematurely implemented.
+5. **Separate Company vs. Deal Mechanics**:
+   - **Company**: Uses `isArchived: boolean` (Goal 2 archive/restore; existing deals remain intact).
+   - **Deal**: Uses `deletedAt: timestamp?` and `deletedById: uuid?` (soft-delete to Trash with complete history retained).
+
 ### Authorization Matrix
 
 | Capability | Sales Rep | Sales Manager | Enforcement Point & Repository Rule |
 | :--- | :---: | :---: | :--- |
-| **View Companies** | **Scoped only**: companies they own, OR associated with deals they own/collaborate on | All team companies | `CompanyRepository`: `WHERE teamId = :teamId AND (ownerId = :userId OR id IN (SELECT companyId FROM "Deal" WHERE ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId)))` |
+| **View Companies** | **Scoped only**: companies they own, OR associated with deals they own/collaborate on | All team companies | `CompanyRepository`: `WHERE teamId = :teamId AND (ownerId = :userId OR id IN (SELECT companyId FROM "Deal" WHERE (ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId)) AND deletedAt IS NULL))` |
 | **Create Company** | Direct (self-assigned owner) | Direct (can assign any rep) | `CompanyService` validation |
 | **Edit / Archive Company** | Owned companies only | All team companies | `CompanyPolicy.canModify()` |
-| **View Deals** | **Scoped only**: deals they own, OR collaborate on | All team deals | `DealRepository`: `WHERE ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId)` |
+| **View Active Deals** | **Scoped only**: deals they own, OR collaborate on | All team deals | `DealRepository`: `WHERE deletedAt IS NULL AND (ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId))` |
+| **View Deleted Deals (Trash)**| **Scoped only**: deleted deals they owned or collaborated on | All team deleted deals | `DealRepository`: `WHERE deletedAt IS NOT NULL AND ...` (scoped by role) |
 | **Create Deal** | Direct on accessible companies | Direct on any team company | `DealService` validation (blocks creation on archived companies) |
-| **Edit Deal Details** | Owned or collaborated deals | All team deals | `DealPolicy.canModify()` |
+| **Edit Deal Details** | Owned or collaborated deals | All team deals | `DealPolicy.canModify()` (blocks edits on soft-deleted deals) |
 | **Advance / Move Back Deal** | Owned or collaborated deals | All team deals | `DealTransitionPolicy` (enforces 1-step, reason on backward, closed restrictions) |
-| **Delete Deal** | Owned deals (only if zero audit history exists) | All team deals (only if zero audit history exists) | `DealPolicy.canDelete()`: Database enforces `ON DELETE RESTRICT` on `DealHistory`. Deals with stage changes or notes cannot be deleted; must be marked Lost. |
+| **Delete Deal** | **Deal Owner only** (on owned deals) | **Allowed on any deal** in team | `DealPolicy.canDelete()`: Sets `deletedAt` & `deletedById`; appends immutable `DELETED` event in `DealHistory`. Physical row and history remain intact. |
 | **Reopen Closed Deal** | ❌ Forbidden | ✅ Allowed (returns to `previousStage`) | `DealTransitionPolicy.canReopen()` (Manager role required) |
 | **Reassign Deal Owner** | ❌ Forbidden | ✅ Allowed (single & bulk) | `DealPolicy.canReassign()` (Manager role required) |
 | **Manage Collaborators** | Allowed **only if rep is Deal Owner** (collaborators cannot manage other collaborators) | **Allowed on any deal** in team | `DealPolicy.canManageCollaborators()`: Only Sales Manager OR Deal Owner can add/remove collaborators (`POST /api/deals/:id/collaborators` and `DELETE /api/deals/:id/collaborators/:userId`) |
-| **Bulk Actions & CSV** | CSV export for accessible deals | Bulk reassign, bulk advance, CSV | `DealService` & `BulkDealService` (supports partial success reporting) |
-| **Overdue Alerts** | View & dismiss own overdue deals | View all team overdue deals | `AlertPolicy` & `AlertRepository` |
-| **Audit History** | Read accessible deal timeline | Read all deal timelines | Append-only: `ON DELETE RESTRICT` in DB; zero update/delete API routes |
+| **Bulk Actions & CSV** | CSV export for accessible deals | Bulk reassign, bulk advance, CSV | `DealService` & `BulkDealService` (operates on active open deals) |
+| **Overdue Alerts** | View & dismiss own overdue deals | View all team overdue deals | `AlertPolicy` & `AlertRepository` (filtered to `deletedAt IS NULL`) |
+| **Audit History** | Read accessible deal timeline | Read all deal timelines | Append-only: `DealHistory` is permanent; soft deletion appends `DELETED`; zero update/delete API routes |
 
 ---
 
@@ -246,6 +263,9 @@ To remain strictly within the ~12-hour engineering budget while maximizing maint
 6. **Deep Class Inheritance Hierarchies**:
    - *Excluded*: Abstract base controllers, generic repository base classes, entity class hierarchies (`Manager extends User`).
    - *Rationale*: Favor composition and dependency injection over inheritance. Roles are represented as typed data/enums, not subclasses.
+7. **Physical Deal Purge / Automated Retention Workflows**:
+   - *Excluded*: Scheduled hard-delete cron jobs, background purge workers, separate audit databases.
+   - *Rationale*: Soft deletion with an append-only timeline completely fulfills both Goal 3 and Goal 9 without introducing distributed cleanup complexities.
 
 ---
 
@@ -256,7 +276,7 @@ At 100x data volume (~100,000+ deals, ~1,000,000+ history events), the system ma
 1. **Server-Side Pagination & Bounded Windows**:
    - All deal and company discovery queries require `page` and `limit` parameters, returning total record counts via indexed queries. Unbounded `findMany()` calls are forbidden.
 2. **Targeted Composite Indexing**:
-   - Indexed foreign keys and search paths: `(teamId, stage, expectedCloseDate)`, `(dealId, userId)`, and `(companyId, isArchived)`.
+   - Indexed foreign keys and search paths: `(teamId, deletedAt)`, `(teamId, stage, expectedCloseDate)`, `(dealId, userId)`, and `(companyId, isArchived)`.
 3. **Calendar Date Arithmetic**:
    - `Deal.expectedCloseDate` is stored as a PostgreSQL `DATE` (`@db.Date`), eliminating timezone conversion overhead and ensuring index scans on date boundaries operate at peak performance.
 4. **Zero N+1 Queries**:
@@ -264,4 +284,4 @@ At 100x data volume (~100,000+ deals, ~1,000,000+ history events), the system ma
 5. **Dynamic Value Derivation over Stale Denormalization**:
    - Weighted pipeline values (`deal.value * stage.probability`) are computed dynamically in SQL or service aggregation, preventing data synchronization anomalies.
 6. **Append-Only History Scaling**:
-   - `DealHistory` is indexed on `(dealId, createdAt DESC)` and protected by `ON DELETE RESTRICT`. If history scales into millions of rows, PostgreSQL table partitioning on `dealId` or timestamp ranges can be adopted without changing application business logic.
+   - `DealHistory` is indexed on `(dealId, createdAt DESC)`. Because deals are soft-deleted, history records remain permanently attached to their parent deals without risk of cascade drops or orphaned rows. At extreme scale, PostgreSQL declarative table partitioning by `createdAt` or range hash on `dealId` can be adopted without changing application business logic.

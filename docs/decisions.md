@@ -189,16 +189,23 @@ This document records the major architectural, domain, and technology decisions 
 
 ---
 
-## Decision 14: `DealHistory` Deletion Semantics & `ON DELETE RESTRICT`
+## Decision 14: Deal Deletion via Application-Level Soft Delete & Immutable Audit History
 
-- **Context / Problem**: Reconciling the requirement that deals can be deleted (Goal 3: *"Deals can be created, edited, and deleted"*) with the requirement that deal history is an immutable timeline that cannot be edited or deleted (Goal 9: *"Nothing in this timeline can be edited or deleted after the fact, including by sales managers"*).
-- **Chose**: `DealHistory.dealId` foreign key configured with `ON DELETE RESTRICT` at the database level.
-- **Rejected**: `ON DELETE CASCADE` from `Deal` → `DealHistory`; silently inventing a soft-delete column (`isDeleted`) for deals.
+- **Context / Problem**: Reconciling the explicit requirement that deals can be deleted (Goal 3: *"Deals can be created, edited, and deleted"*) with the strict requirement that deal history is an immutable timeline that cannot be edited or deleted after the fact, including by sales managers (Goal 9).
+- **Chose**: Application-level **Soft Delete** for Deals (`Deal.deletedAt: TIMESTAMP NULLABLE`, `Deal.deletedById: UUID NULLABLE`) paired with appending an immutable `DELETED` event in `DealHistory`.
+- **Rejected**: 
+  - Physical hard deletion (`DELETE FROM "Deal"`), which would destroy the deal aggregate and sever or erase the required audit timeline.
+  - `ON DELETE CASCADE` from `Deal` → `DealHistory`, which would casually destroy the audit trail upon deal deletion.
+  - Over-engineering: scheduled hard-delete purge cron jobs, automated retention workers, or separate audit databases.
 - **Why**: 
-  - If `ON DELETE CASCADE` is used, deleting a deal physically drops all associated historical timeline rows, directly violating Goal 9 and enabling the exact failure mode described in the assignment scenario: *"A deal marked lost gets deleted from the sheet entirely, so nobody can ever explain afterward why it fell through."*
-  - Using `ON DELETE RESTRICT` enforces at the physical database engine level that deals with established historical audit trails cannot be casually destroyed through cascading deletes.
-  - **How Goal 3 is Satisfied**:
-    - Deals without downstream lifecycle transitions or notes (e.g. newly created deals entered mistakenly with no stage movements or notes) can be deleted cleanly, satisfying the requirement that deals can be created and deleted.
-    - Once a deal accumulates lifecycle audit history (stage movements, reassignments, notes), the application blocks deletion and returns `409 Conflict` / `400 Bad Request`, instructing the user that active or historical deals must be progressed or marked `LOST` rather than deleted.
-  - **No Silently Invented Features**: We do not invent an unrequested soft-delete system or trash bin for deals. The behavior is achieved purely through relational referential integrity (`ON DELETE RESTRICT`) and domain policy validation.
-- **Trade-offs**: Hard deletion of historical deals is forbidden, guaranteeing compliance with audit immutability rules.
+  - **Audit Invariant**: "Deleting a deal" means changing its lifecycle visibility and operational state, not destroying its audit trail.
+  - A deleted deal remains a real row in the `Deal` table. Because the row is never physically deleted, its full `DealHistory` timeline remains intact, permanently queryable, and referentially valid.
+  - Normal active views (pipeline board, company deal lists, search, CSV exports, dashboard metrics) exclude deleted deals by default via `WHERE "deletedAt" IS NULL`.
+  - A dedicated **Deleted / Trash** view allows inspection of soft-deleted deals (`WHERE "deletedAt" IS NOT NULL`), clearly identifying the deal, company, deletion date, and the deleting actor.
+  - The deletion transition itself is captured as an immutable `DELETED` event in `DealHistory`, preserving complete chronological accountability:
+    ```
+    CREATED → STAGE_CHANGED → OWNER_CHANGED → NOTE_ADDED → DELETED
+    ```
+  - **Future Restore Compatibility**: The architecture leaves clean room for restoring a deleted deal from Trash (clearing `deletedAt` and `deletedById`). Specific restore permissions and endpoints are marked **TBD** and not prematurely implemented.
+  - **Company vs. Deal Separation**: Company archiving (`isArchived: boolean`) and Deal deletion (`deletedAt: timestamp?`, `deletedById: uuid?`) remain separate mechanisms.
+- **Trade-offs**: All active deal queries require filtering by `deletedAt IS NULL` (indexed via `@@index([teamId, deletedAt])`). Soft-deleted records consume database storage indefinitely, fulfilling compliance and audit requirements.

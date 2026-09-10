@@ -135,4 +135,50 @@ Each significant entry records:
 - **Corrections or rejected suggestions**: None.
 - **Final outcome**: All 4 documentation files are 100% harmonized, internally consistent, and ready for Phase 2 database schema implementation upon user authorization.
 
+---
+
+## 2026-09-10 - Prompt 05 - Pre-Phase 2: Correction to Deal Soft Delete & Immutable Timeline Retention
+
+- **Problem / Task**: Correct the architectural decision regarding deal deletion before implementing Phase 2. Previously, we assumed that deals would be physically deleted via SQL `DELETE` and that database-level `ON DELETE RESTRICT` would block deletion of historical deals while allowing deletion of draft deals. That assumption was flawed because it prevented normal deletion of deals that possessed audit logs or risked cascade destruction of history.
+- **User Intent**: Permanently resolve the tension between Goal 3 (*"Deals can be created, edited, and deleted"*) and Goal 9 (*"History you cannot rewrite. Nothing in this timeline can be edited or deleted after the fact"*):
+  - Adopt **application-level soft delete** for Deals (`deletedAt: DateTime?`, `deletedById: String?`).
+  - Never hard-delete deals physically from the database.
+  - Preserve `DealHistory` permanently for the lifetime of the record; do NOT use `ON DELETE CASCADE`.
+  - Appending an immutable `DELETED` history event whenever a deal transitions into the deleted state.
+  - Exclude deleted deals from normal active views (`WHERE deletedAt IS NULL`) by default.
+  - Provide a dedicated **Deleted / Trash** view (`WHERE deletedAt IS NOT NULL`) with full timeline inspection.
+  - Leave room for a future restore capability from Trash (details marked TBD).
+  - Maintain the distinct separation between Company archiving (`isArchived`) and Deal soft-deletion.
+- **Prompt sent to IDE / Code Assistant**:
+  > *"We need to make one important documentation-level correction before implementing Phase 2. DO NOT implement database/schema yet. DECISION: Use SOFT DELETE for Deals. The application-level meaning of 'delete deal' should be: marked deleted rather than physically removed; complete DealHistory remains permanently available; disappears from normal views; dedicated Deleted/Trash section; timeline preserves deletion event (DELETED); restore details TBD. Add deletedAt and deletedById to Deal. No cascade to DealHistory. No hard deletion. Update docs/schema.md, docs/architecture.md, docs/decisions.md, docs/plan.md, and docs/ai-prompts.md. Perform a consistency check across all five documents."*
+- **What IDE / Code Assistant implemented**:
+  - `docs/schema.md`:
+    - Added `deletedAt: TIMESTAMP NULLABLE` and `deletedById: UUID NULLABLE` to the `Deal` model in both the Mermaid ER diagram and the column definition table.
+    - Added `DELETED` to the `HistoryType` enum.
+    - Completely rewrote Section 6 to document the Soft Delete architecture, data retention semantics, timeline sequence (`CREATED → STAGE_CHANGED → OWNER_CHANGED → NOTE_ADDED → DELETED`), and distinction between Company archiving and Deal deletion.
+    - Updated Table 7 (Constraints) and Section 9 (added `@@index([teamId, deletedAt])`).
+  - `docs/architecture.md`:
+    - Updated the Mermaid authorization flowchart with a dedicated branch for deal deletion.
+    - Added a comprehensive "Deal Deletion & Trash Visibility Architecture" section detailing active vs. trash views, immutable deletion events, and future restore compatibility.
+    - Updated the Authorization Matrix: Deal Owner can soft-delete owned deals; Sales Manager can soft-delete any team deal; added Trash view row.
+    - Updated Section 7 (Scalability) point 6 to reflect soft-delete history scaling without cascade or orphan risks.
+  - `docs/decisions.md`:
+    - Rewrote Decision 14 to document the Soft Delete architecture, rejecting physical hard deletion and cascading drops, explaining why soft deletion fulfills both Goal 3 and Goal 9 without over-engineering.
+  - `docs/plan.md`:
+    - Updated Phase 2 checklist to require `Deal.deletedAt`, `Deal.deletedById`, `DELETED` history type, and soft-delete seed data.
+    - Updated Phase 5 checklist with soft-delete `DELETE /api/deals/:id` and Trash `GET /api/deals/trash` endpoints.
+    - Updated Phase 6 checklist with `DELETED` history creation.
+    - Updated Phase 11 checklist with the Deleted / Trash UI view.
+  - `docs/ai-prompts.md`:
+    - Appended Prompt 05 documenting this architectural pivot and noting that the future Phase 2 implementation must create the soft-delete fields and `DELETED` history type, explicitly prohibiting hard deletion of deals.
+- **Human review / testing**: Verified across all documents that:
+  - No statements remain claiming `ON DELETE RESTRICT` blocks deal deletion.
+  - No statements remain claiming deals are physically deleted or permanently destroyed.
+  - No cascade destruction of `DealHistory` is permitted.
+  - Company archiving and deal soft deletion remain strictly distinct.
+  - Zero application code, migrations, or schemas have been generated.
+- **Corrections or rejected suggestions**: Corrected earlier assumption of using `ON DELETE RESTRICT` for deal deletion. Soft deletion with an append-only `DELETED` event is now the authoritative model.
+- **Final outcome**: All five documentation files are 100% harmonized, accurate, and ready for Phase 2 implementation upon user command.
+
+
 

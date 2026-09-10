@@ -47,15 +47,17 @@ graph TD
 
 ### Phase 2: Database Schema, Migrations & Demo Seed Data
 - [ ] Implement complete Prisma schema (`Organization`, `Team`, `User`, `Company`, `Deal`, `DealCollaborator`, `DealHistory`, `DealAlert`).
+- [ ] Configure `Deal.deletedAt` (`DateTime?`) and `Deal.deletedById` (`String?`) for application-level soft deletion.
 - [ ] Configure `Deal.expectedCloseDate` and `DealAlert.dismissedCloseDate` as `DateTime @db.Date` (PostgreSQL `DATE`).
-- [ ] Configure `DealHistory.dealId` with `onDelete: Restrict` to protect audit immutability at the physical engine level.
-- [ ] Configure PostgreSQL enums, foreign keys, cascade rules for collaborators/alerts, and composite indexes.
+- [ ] Configure `HistoryType` enum including `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, `REOPENED`, and `DELETED`.
+- [ ] Configure PostgreSQL enums, foreign keys, cascade rules for collaborators/alerts, and composite indexes (`@@index([teamId, deletedAt])`).
 - [ ] Run Prisma migration against Supabase database (`npx prisma migrate dev`).
 - [ ] Create reproducible database seed script (`prisma/seed.ts`) populating:
   - 1 Organization ("Busy Infotech") & 1 Team ("Enterprise Sales Team").
   - 1 Sales Manager & 3 Sales Reps with hashed demo passwords.
   - 6+ Companies across various industries.
-  - 15+ Deals in various stages (`NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST`).
+  - 15+ Active deals across all stages (`NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST`).
+  - Soft-deleted deal(s) in Trash demonstrating intact historical timelines and `DELETED` events.
   - Deals with multiple collaborators.
   - Full immutable timeline events for historical deals.
   - Overdue deals with and without dismissals for alert testing.
@@ -82,16 +84,23 @@ graph TD
 - *Status*: **PENDING**
 
 ### Phase 5: Deals & Lifecycle State Machine
-- [ ] Deal CRUD endpoints (`POST`, `GET`, `PATCH`, `DELETE /api/deals/:id`).
+- [ ] Deal CRUD endpoints:
+  - Create deal (`POST /api/deals`).
+  - List active deals (`GET /api/deals`) — filtered by `deletedAt IS NULL`.
+  - List deleted deals / Trash (`GET /api/deals/trash`) — filtered by `deletedAt IS NOT NULL` with role scoping.
+  - View deal details (`GET /api/deals/:id`).
+  - Edit deal details (`PATCH /api/deals/:id`) — blocked if deal is deleted.
+  - Soft-delete deal (`DELETE /api/deals/:id`):
+    - Manager or Deal Owner only.
+    - Sets `deletedAt = NOW()`, `deletedById = req.user.id`.
+    - Appends immutable `DELETED` event to `DealHistory`.
+    - Physical deal row and full audit history remain intact.
 - [ ] `DealTransitionPolicy` enforcing lifecycle rules:
   - Forward 1-step moves: `NEW → QUALIFIED → PROPOSAL → NEGOTIATION → WON/LOST`.
   - Backward 1-step moves: requires non-empty recorded reason.
   - Closed deal protection: `WON`/`LOST` blocks further transitions.
   - Manager reopen: restores `previousStage` with `closedAt = null`.
-- [ ] Deal deletion policy respecting `ON DELETE RESTRICT` on history:
-  - Clean deletion allowed for deals with zero audit history (e.g. mistaken creation).
-  - Rejection with 409 Conflict for deals with historical transitions or notes.
-- [ ] Vitest unit tests covering valid, invalid, backward, and reopened transitions.
+- [ ] Vitest unit tests covering valid, invalid, backward, reopened, and soft-delete transitions.
 - *Status*: **PENDING**
 
 ### Phase 6: Collaboration & Immutable Deal History
@@ -104,13 +113,14 @@ graph TD
   - Owner reassignment (`OWNER_CHANGED`)
   - Notes added (`NOTE_ADDED`)
   - Reopened (`REOPENED`)
-- [ ] Deal timeline endpoint (`GET /api/deals/:id/history`).
+  - Soft deletion (`DELETED`)
+- [ ] Deal timeline endpoint (`GET /api/deals/:id/history`) — accessible for active and deleted deals.
 - [ ] Strictly zero edit/delete endpoints for history.
 - *Status*: **PENDING**
 
 ### Phase 7: Search, Filtering, Sorting & Server-Side Pagination
 - [ ] Query parser and Zod schema for search/filter parameters.
-- [ ] Search across deal title and company name (`ILIKE`).
+- [ ] Search across deal title and company name (`ILIKE`) on active deals (`deletedAt IS NULL`).
 - [ ] Filters: company, stage, owner.
 - [ ] Sorting: value, expectedCloseDate, updatedAt (ASC/DESC).
 - [ ] Server-side pagination returning `{ items, total, page, totalPages }`.
@@ -122,11 +132,11 @@ graph TD
 - [ ] Manager bulk advance endpoint (`POST /api/deals/bulk/advance`).
 - [ ] Partial success reporting returning per-deal status: `{ dealId, success, reason }`.
 - [ ] Pipeline CSV export endpoint (`GET /api/deals/export`):
-  - Streams every open deal with company, stage, value, and weighted value.
+  - Streams every active open deal with company, stage, value, and weighted value.
 - *Status*: **PENDING**
 
 ### Phase 9: Dashboard Pipeline Metrics
-- [ ] Dashboard aggregation service (`GET /api/dashboard`).
+- [ ] Dashboard aggregation service (`GET /api/dashboard`) — excludes soft-deleted deals.
 - [ ] Headline metrics: Open deals count, total weighted pipeline, won this month, lost this month.
 - [ ] Breakdown metrics: Open deals by stage, open deals by owner.
 - [ ] Trend metrics: Deals won per week over the last 8 weeks.
@@ -134,7 +144,7 @@ graph TD
 - *Status*: **PENDING**
 
 ### Phase 10: Overdue Deal Alerts
-- [ ] Overdue deals detection query (`GET /api/alerts`).
+- [ ] Overdue deals detection query (`GET /api/alerts`) — excludes soft-deleted deals.
 - [ ] Overdue alert badge count endpoint (`GET /api/alerts/count`).
 - [ ] Dismiss alert endpoint (`POST /api/alerts/:dealId/dismiss`) — deal owner only.
 - [ ] Verify re-triggering logic: alert returns if expectedCloseDate changes and lapses again.
@@ -144,8 +154,9 @@ graph TD
 - [ ] Responsive navigation bar with role badge, alerts counter, and user profile.
 - [ ] Authentication pages: Login with pre-filled demo credential buttons.
 - [ ] Dashboard view: Summary metric cards, stage distribution chart, and 8-week win trend (Recharts).
-- [ ] Deals Pipeline view: Interactive list/table, search bar, multi-filter drawer, sorting headers, pagination controls.
-- [ ] Deal Detail drawer/modal: Full metadata, stage advancement stepper, backward move reason modal, collaborator manager, notes input, and audit timeline.
+- [ ] Deals Pipeline view: Interactive list/table of active deals, search bar, multi-filter drawer, sorting headers, pagination controls.
+- [ ] Deleted / Trash view: Dedicated list showing soft-deleted deals with deletion metadata and full timeline drawer.
+- [ ] Deal Detail drawer/modal: Full metadata, stage advancement stepper, backward move reason modal, collaborator manager, notes input, and audit timeline (with visual indicators for lifecycle and deleted states).
 - [ ] Companies view: Company list, create modal, edit drawer, archive/restore actions.
 - [ ] Bulk actions toolbar: Checkbox selection, bulk reassign dropdown, bulk advance button with results modal.
 - [ ] CSV Export button.

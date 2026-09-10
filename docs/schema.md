@@ -22,7 +22,7 @@ erDiagram
     COMPANY ||--o{ DEAL : "has deals"
     
     DEAL ||--o{ DEAL_COLLABORATOR : "has collaborators"
-    DEAL ||--o{ DEAL_HISTORY : "logs timeline events (RESTRICT)"
+    DEAL ||--o{ DEAL_HISTORY : "logs timeline events"
     DEAL ||--o| DEAL_ALERT : "generates overdue alert"
 
     ORGANIZATION {
@@ -75,6 +75,8 @@ erDiagram
         enum stage "NEW | QUALIFIED | PROPOSAL | NEGOTIATION | WON | LOST"
         datetime closedAt
         enum previousStage "Nullable stage before close"
+        datetime deletedAt "Nullable soft-delete timestamp"
+        uuid deletedById FK "Nullable User who soft-deleted deal"
         datetime createdAt
         datetime updatedAt
     }
@@ -87,9 +89,9 @@ erDiagram
 
     DEAL_HISTORY {
         uuid id PK
-        uuid dealId FK "ON DELETE RESTRICT"
+        uuid dealId FK
         uuid actorId FK
-        enum type "CREATED | STAGE_CHANGED | OWNER_CHANGED | NOTE_ADDED | REOPENED"
+        enum type "CREATED | STAGE_CHANGED | OWNER_CHANGED | NOTE_ADDED | REOPENED | DELETED"
         enum oldStage
         enum newStage
         uuid oldOwnerId FK
@@ -176,6 +178,8 @@ The core business entity representing a commercial transaction.
 | `stage` | ENUM (`DealStage`) | NOT NULL, default `NEW` | Lifecycle stage: `NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST` |
 | `closedAt` | TIMESTAMP | NULLABLE | Timestamp when deal entered `WON` or `LOST` |
 | `previousStage` | ENUM (`DealStage`) | NULLABLE | Immediate preceding stage before closing (used for Manager reopen) |
+| `deletedAt` | TIMESTAMP | NULLABLE | Timestamp when deal was soft-deleted (NULL = active, non-null = in trash) |
+| `deletedById` | UUID | NULLABLE, Foreign Key → `User.id` | User who soft-deleted the deal |
 | `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Creation timestamp |
 | `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Last modification timestamp |
 
@@ -194,9 +198,9 @@ Append-only immutable audit trail for every critical deal event. **No edit or de
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | Primary Key, default UUIDv4 | Unique event identifier |
-| `dealId` | UUID | NOT NULL, Foreign Key → `Deal.id` (**ON DELETE RESTRICT**) | Target deal (protected against accidental cascade deletion) |
+| `dealId` | UUID | NOT NULL, Foreign Key → `Deal.id` | Target deal (retained permanently alongside soft-deleted deals) |
 | `actorId` | UUID | NOT NULL, Foreign Key → `User.id` | User who performed the action |
-| `type` | ENUM (`HistoryType`)| NOT NULL | `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, `REOPENED` |
+| `type` | ENUM (`HistoryType`)| NOT NULL | `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, `REOPENED`, `DELETED` |
 | `oldStage` | ENUM (`DealStage`) | NULLABLE | Pre-transition stage |
 | `newStage` | ENUM (`DealStage`) | NULLABLE | Post-transition stage |
 | `oldOwnerId` | UUID | NULLABLE, Foreign Key → `User.id` | Previous owner (for reassignments) |
@@ -225,9 +229,10 @@ Tracks dismissal state for overdue deal notifications.
 - **Team → Deal**: `1 : N` (Deals belong to a team boundary).
 - **User (Owner) → Company**: `1 : N` (A sales rep owns multiple companies).
 - **User (Owner) → Deal**: `1 : N` (A sales rep owns multiple deals).
+- **User (Deleter) → Deal**: `1 : N` (A user can soft-delete deals).
 - **Company → Deal**: `1 : N` (A company has multiple deals; every deal belongs to exactly one company).
 - **Deal ↔ User (Collaborator)**: `N : M` (A deal has multiple collaborating reps; a rep collaborates on multiple deals; resolved via `DealCollaborator` junction table).
-- **Deal → DealHistory**: `1 : N` (A deal has an ordered timeline of immutable events).
+- **Deal → DealHistory**: `1 : N` (A deal has an ordered timeline of immutable events; permanently retained through soft deletion).
 - **User (Actor) → DealHistory**: `1 : N` (A user triggers multiple audit events).
 - **Deal → DealAlert**: `1 : 0..1` (A deal optionally has a dismissal record).
 
@@ -306,27 +311,54 @@ const accessibleCompanies = await prisma.company.findMany({
 
 ---
 
-## 6. Deal Deletion & `DealHistory` Deletion Semantics
+## 6. Deal Deletion & `DealHistory` Deletion Semantics: Soft Delete Architecture
 
 A critical architectural tension exists between two explicit requirements:
 1. **Goal 3**: *"Deals can be created, edited, and deleted."*
 2. **Goal 9**: *"History you cannot rewrite. Nothing in this timeline can be edited or deleted after the fact, including by sales managers."*
 
-### Analysis of Foreign Key Strategies:
+### Decision: Application-Level Soft Deletion
+To resolve this tension with full integrity, **Deals use Soft Deletion**:
+- The application-level meaning of "delete deal" is that the deal transitions into a deleted state rather than being physically removed from the database.
+- A deleted deal remains a real `Deal` row in the database, with two explicit soft-delete columns:
+  - `deletedAt: TIMESTAMP NULLABLE` — the timestamp when deletion occurred (`NULL` = active deal, non-null = in trash).
+  - `deletedById: UUID NULLABLE` — foreign key reference to `User.id` identifying who performed the deletion.
+- Its complete `DealHistory` timeline remains permanently available and intact.
+- Normal/active queries exclude deleted deals by default: `WHERE "deletedAt" IS NULL`.
+- A dedicated **Deleted / Trash** view queries deleted deals: `WHERE "deletedAt" IS NOT NULL`.
+- The deletion event itself is recorded as a new immutable event in `DealHistory`:
+  - `dealId`: Referenced deal.
+  - `actorId`: User who deleted the deal (`deletedById`).
+  - `type`: `DELETED`.
+  - `createdAt`: Timestamp of deletion.
+- The `DELETED` history record is append-only and strictly immutable, exactly like `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, and `REOPENED`.
+- Soft deletion does **not** remove or truncate any previous history.
 
-| Strategy | Behavior on Deal Deletion | Pros | Cons / Trade-offs |
-| :--- | :--- | :--- | :--- |
-| **`ON DELETE CASCADE`** | Deleting a deal physically drops all associated `DealHistory` rows. | Simple database-level operation; leaves no orphaned foreign keys. | **Violates Goal 9**. Deleting a deal casually erases the audit trail of who created it, advanced it, or marked it lost. |
-| **`ON DELETE RESTRICT` (Selected)** | The database engine blocks deletion of any `Deal` if referencing rows exist in `DealHistory`. | Strictly enforces audit immutability at the database engine level; prevents silent data loss. | Direct hard deletion via `DELETE FROM "Deal"` fails if audit history exists. |
+### Timeline Lifecycle Flow
+Conceptually, the deal timeline progresses through an append-only sequence:
+```
+CREATED
+  ↓
+STAGE_CHANGED
+  ↓
+OWNER_CHANGED
+  ↓
+NOTE_ADDED
+  ↓
+DELETED  [deleted/trash state visual indication]
+```
+*(Note: Visual indicators such as trash badges or icons are presentation details handled in the frontend UI; the domain model tracks typed events.)*
 
-### Decision & Operational Behavior:
-- **Foreign Key Constraint**: `DealHistory.dealId` uses `ON DELETE RESTRICT`.
-- **How Deal Deletion Satisfies Goal 3 without Violating Goal 9**:
-  1. **New / Erroneous Deals**: A deal that was entered mistakenly and has zero downstream lifecycle events (no stage transitions, no reassignments, no notes) can be deleted cleanly by its owner or manager.
-  2. **Deals with Historical Transitions**: If a deal has progressed through stages or accumulated notes, it possesses an immutable audit trail. The application returns an explicit `409 Conflict` / `400 Bad Request` explaining:
-     > *"This deal cannot be deleted because it contains an immutable historical audit trail (stage movements or notes). Per compliance rules, active or historical deals must be progressed or marked Lost rather than deleted."*
-  3. **No Silently Invented Soft-Delete Feature**: We deliberately do not invent a hidden `isDeleted: boolean` soft-delete column or restore flow for deals (which is not in the specification). The constraint is solved via database-level referential integrity (`ON DELETE RESTRICT`) and explicit domain validation.
-  4. **Direct Alignment with Assignment Scenario**: This directly prevents the scenario warned against in the assignment scenario: *"A deal marked lost gets deleted from the sheet entirely, so nobody can ever explain afterward why it fell through."*
+### Relationship & Data Retention Semantics
+- **No Cascading Destruction**: We do **NOT** use `ON DELETE CASCADE` from `Deal` → `DealHistory`. Since deals are soft-deleted and remain in the database, `DealHistory` remains permanently associated with `Deal`.
+- **Collaborators and Alerts**: `DealCollaborator` and `DealAlert` records remain associated with the deal row, preserving all relationship metadata unless an explicit cleanup policy is introduced later.
+- **Restore Capability**: The architecture leaves clean room for restoring a deleted deal from Trash (e.g. setting `deletedAt = NULL`, `deletedById = NULL`). However, because the current requirements do not specify exact restore permissions or endpoints for deals, detailed restore behavior is marked **TBD** and not implemented prematurely.
+- **Rejection of Hard Deletion**: Hard/physical `DELETE` of deals is rejected because destroying deal rows would sever or orphan the immutable timeline mandated by Goal 9. Background purge scripts, automated hard retention jobs, distributed event sourcing, and separate audit databases are explicitly avoided to keep the system simple and appropriate for the assignment.
+
+### Distinct Architectural Mechanisms: Company Archiving vs. Deal Deletion
+Company archiving and Deal deletion are two separate, deliberate concepts:
+- **Company Archiving**: Uses `isArchived: boolean`. Archiving hides an inactive company from default active views without destroying its deals (Goal 2). Companies have an explicit restore workflow (`/archive`, `/restore`).
+- **Deal Deletion**: Uses `deletedAt: timestamp?` and `deletedById: uuid?`. Deleting a deal moves it to Deleted/Trash while preserving its complete history and recording a `DELETED` audit event (Goals 3 & 9).
 
 ---
 
@@ -334,7 +366,7 @@ A critical architectural tension exists between two explicit requirements:
 
 | Concern | Enforced By | Mechanism / Implementation | Why the Line Was Drawn Here |
 | :--- | :---: | :--- | :--- |
-| **Referential Integrity** | **Database** | Foreign Keys (`ON DELETE RESTRICT` for history; `CASCADE` for collaborators/alerts) | Prevents orphaned rows and guarantees audit trail preservation at physical storage level. |
+| **Referential Integrity** | **Database** | Foreign Keys (`CASCADE` for collaborators/alerts; soft delete retains Deal and History rows) | Prevents orphaned rows and guarantees entity relationships at physical storage level. |
 | **Entity Identification** | **Database** | UUID Primary Keys, Composite PK on `(dealId, userId)` | Prevents duplicate collaborator rows and guarantees global record uniqueness. |
 | **Email Uniqueness** | **Database** | `UNIQUE` index on `User.email` | Strict collision prevention for authentication credentials. |
 | **Company Name Uniqueness** | **Application** | Duplicate/similarity warning on creation | Legitimate businesses may share identical names. Hard DB unique constraints would block valid CRM workflows. |
@@ -345,7 +377,7 @@ A critical architectural tension exists between two explicit requirements:
 | **Deal Reopen Authorization** | **Application** | `DealTransitionPolicy` + Role Guard | Reopen logic checks that `req.user.role === 'MANAGER'` before allowing state inversion. |
 | **Server-Side Visibility** | **Application** | Query scoping in Repositories | Rep visibility (`ownerId == user.id || collaborator`) requires dynamic SQL/Prisma `WHERE` clauses based on JWT session context. |
 | **Overdue Alert Dismissal Cycle** | **App & DB** | Calendar Date comparison with `dismissedCloseDate` | Compares `expectedCloseDate != dismissedCloseDate` between PostgreSQL `DATE` types. |
-| **Immutability of Audit History** | **App & DB** | `ON DELETE RESTRICT` in DB; absence of `UPDATE`/`DELETE` API routes in App | Defense-in-depth: database prevents cascade deletion, application prevents modification endpoints. |
+| **Immutability of Audit History** | **App & DB** | Append-only `DealHistory`; soft deletion logs `DELETED`; zero update/delete API routes | Defense-in-depth: soft deletion preserves physical records, application prevents modification endpoints. |
 
 ---
 
@@ -359,12 +391,13 @@ A critical architectural tension exists between two explicit requirements:
 - **Why**: The weighted value of a deal is calculated as `value * stageProbability` (e.g., Proposal = 50% of ₹10,00,000 = ₹5,00,000). Storing this in a column would require retroactive bulk updates across thousands of rows whenever stage probabilities change or deal values fluctuate. It is derived on the fly in SQL queries and dashboard aggregations.
 
 ### 8.3 Overdue Alert Status (Deliberately NOT Persisted as Static Flags)
-- **Why**: Storing an `isOverdue: boolean` column would require scheduled background cron jobs to flip bits daily at midnight. Instead, overdue status is derived dynamically:
+- **Why**: Storing an `isOverdue: boolean` column would require scheduled background cron jobs to flip bits daily at midnight. Instead, overdue status is derived dynamically on active deals:
   ```sql
   SELECT d.*
   FROM "Deal" d
   LEFT JOIN "DealAlert" da ON da."dealId" = d."id"
   WHERE d."stage" NOT IN ('WON', 'LOST')
+    AND d."deletedAt" IS NULL
     AND d."expectedCloseDate" < CURRENT_DATE
     AND (
       da."dealId" IS NULL
@@ -380,6 +413,7 @@ A critical architectural tension exists between two explicit requirements:
 // Recommended Prisma Indexes
 model Deal {
   // ... fields ...
+  @@index([teamId, deletedAt])
   @@index([teamId, stage])
   @@index([ownerId])
   @@index([companyId])
