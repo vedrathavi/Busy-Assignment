@@ -228,6 +228,78 @@ Each significant entry records:
 - **Corrections or rejected suggestions**: None.
 - **Final outcome**: Phase 2 is completely implemented, verified, and operational in Supabase PostgreSQL.
 
+---
 
+## 2026-09-10 - Prompt 07 - Phase 3: Authentication & Server-Side Authorization Foundation
 
-
+- **Problem / Task**: Implement Phase 3: self-contained email/password authentication with bcrypt, JWT token utilities, database-backed authentication middleware (`authenticateToken`), reusable server-side role authorization guard (`requireRole`), login and current-user endpoints (`POST /api/auth/login`, `GET /api/auth/me`), and comprehensive automated Vitest tests.
+- **User Intent**:
+  - Stateless Bearer JWT authentication using bcrypt for password hashing.
+  - Required `JWT_SECRET` with NO fallback/default in config validation (fail fast on missing secret).
+  - Minimal JWT claims (`sub = user.id`) without stale mutable role claims in token.
+  - `authenticateToken` middleware resolving authoritative user context from PostgreSQL database (`id`, `email`, `name`, `role`, `organizationId`, `teamId`).
+  - No `isActive` queries since not defined in schema; missing user rejects with 401.
+  - Mount auth routes strictly at `/api/auth` (no duplicate `/auth` routes).
+  - `requireRole('MANAGER')` authorization middleware.
+  - No fake production test routes; use isolated test routers in test suite.
+  - Comprehensive automated tests covering all 16 scenarios including database-authoritative dynamic role changes.
+  - No Phase 4+ code (Companies, Deals, lifecycle policies).
+- **Prompt sent to IDE / Code Assistant**:
+  > *"PHASE 3 — AUTHENTICATION & SERVER-SIDE AUTHORIZATION FOUNDATION. Read architecture, schema, decisions, plan, ai-prompts. Build secure, reusable auth foundation. JWT + bcrypt, POST /api/auth/login, GET /api/auth/me, authenticateToken middleware, requireRole guard, Zod validation, Vitest test suite. Stop after Phase 3."*
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/config/env.ts`:
+    - Updated `JWT_SECRET` validation to `z.string().min(1, 'JWT_SECRET is required and must not be empty')` with NO default value.
+  - `backend/src/utils/jwt.ts`:
+    - `signToken({ sub: string })`: signs minimal payload using `env.JWT_SECRET` and `env.JWT_EXPIRES_IN`.
+    - `verifyToken(token: string)`: decodes and verifies token signature and expiration, throwing typed `UnauthorizedError`.
+  - `backend/src/modules/auth/auth.types.ts`:
+    - Declared `AuthUser`, `JwtPayload`, `LoginInput`, and `AuthResponse`.
+  - `backend/src/types/express.d.ts`:
+    - Extended Express `Request` type with `user?: AuthUser`.
+  - `backend/src/middleware/authenticate.ts`:
+    - Parses `Authorization: Bearer <token>` header.
+    - Resolves authoritative user from PostgreSQL (`prisma.user.findUnique`).
+    - Attaches `req.user` (`id`, `email`, `name`, `role`, `organizationId`, `teamId`) to request context.
+    - Rejects missing, malformed, invalid, expired tokens, or deleted users with 401.
+  - `backend/src/middleware/authorize.ts`:
+    - `requireRole(...roles)` guard checking `req.user.role` and returning 403 Forbidden for unauthorized roles.
+  - `backend/src/modules/auth/auth.validator.ts`:
+    - Zod schema `loginSchema` validating `email` (lowercased, trimmed, valid email format) and `password` (min 1 char).
+  - `backend/src/modules/auth/auth.service.ts`:
+    - `login(credentials)`: normalizes email, checks user in DB, compares password with `bcrypt.compare`, issues JWT, and returns sanitized `AuthUser` + token.
+    - Returns generic `Invalid email or password` 401 error on wrong password or unknown email to prevent enumeration.
+  - `backend/src/modules/auth/auth.controller.ts`:
+    - `login`: validates request body with Zod and returns `{ success: true, data: { user, token } }`.
+    - `getMe`: returns already database-resolved `{ success: true, data: { user: req.user } }`.
+  - `backend/src/modules/auth/auth.routes.ts`:
+    - Mounted `POST /login` and `GET /me` (with `authenticateToken`).
+  - `backend/src/app.ts`:
+    - Mounted `authRouter` strictly at `/api/auth`.
+  - `backend/src/__tests__/auth.test.ts`:
+    - 16 comprehensive Vitest integration test cases using Supertest:
+      1. Manager login succeeds with token & user context.
+      2. Sales Rep login succeeds with case-insensitive email.
+      3. Wrong password returns generic 401.
+      4. Unknown email returns exact same generic 401.
+      5. Malformed payload returns 400 validation error.
+      6. Valid JWT authenticates on `GET /api/auth/me`.
+      7. Expired JWT returns 401.
+      8. Tampered JWT signature returns 401.
+      9. Missing Authorization header returns 401.
+      10. `req.user` contains authoritative database fields (`id`, `email`, `name`, `role`, `organizationId`, `teamId`).
+      11. `passwordHash` is never exposed in responses.
+      12. Manager accessing `requireRole('MANAGER')` route returns 200.
+      13. Sales Rep accessing `requireRole('MANAGER')` route returns 403 Forbidden.
+      14. Unauthenticated request to protected route returns 401 (not 403).
+      15. Authorization data is database-authoritative (promoting user in DB immediately allows access using same token; demoting immediately forbids access).
+      16. Valid token for deleted user returns 401.
+- **Human review / testing**:
+  - `npx tsc --noEmit`: Passed with 0 errors.
+  - `npm test` (vitest): 17/17 tests passed (health check + 16 auth/authorization tests).
+  - Manual live verification: Tested `POST /api/auth/login`, `GET /api/auth/me`, invalid credentials, and missing tokens against Express server.
+- **Corrections or rejected suggestions**:
+  - Removed default fallback on `JWT_SECRET` in `config/env.ts` so application fails fast if secret is omitted.
+  - Did not mount duplicate `/auth` routes; mounted exclusively at `/api/auth`.
+  - Minimized JWT claims to `sub: user.id` to ensure role/org/team are always loaded fresh from the database on every request.
+  - Tested `requireRole()` using an isolated router in `auth.test.ts` instead of adding placeholder test routes to production code.
+- **Final outcome**: Phase 3 is 100% completed, tested, and validated. Ready for Phase 4 (Companies Module).

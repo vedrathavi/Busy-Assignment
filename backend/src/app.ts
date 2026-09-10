@@ -2,6 +2,7 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import { env } from './config/env';
 import { errorHandler } from './middleware/error.middleware';
+import { authRouter } from './modules/auth/auth.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -32,6 +33,9 @@ export function createApp(): Application {
       timestamp: new Date().toISOString(),
     });
   });
+
+  // Feature Modules
+  app.use('/api/auth', authRouter);
 
   // Global Error Handler
   app.use(errorHandler);

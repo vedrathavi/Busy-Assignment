@@ -64,12 +64,13 @@ graph TD
 - *Status*: **COMPLETED**
 
 ### Phase 3: Authentication & Server-Side Authorization Module
-- [ ] User login endpoint (`POST /api/auth/login`) with bcrypt verification.
-- [ ] JWT token issuance and verification middleware (`auth.middleware.ts`).
-- [ ] Current user session endpoint (`GET /api/auth/me`).
-- [ ] Role authorization guard (`requireRole(['MANAGER', 'SALES_REP'])`).
-- [ ] Unit tests for authentication and role rejection.
-- *Status*: **IN PROGRESS / NEXT**
+- [x] User login endpoint (`POST /api/auth/login`) with bcrypt verification and generic 401 error.
+- [x] JWT token issuance with minimal `sub = user.id` claims and verification utility (`src/utils/jwt.ts`).
+- [x] Authentication middleware (`src/middleware/authenticate.ts`) resolving authoritative database user context.
+- [x] Current user session endpoint (`GET /api/auth/me`).
+- [x] Role authorization guard (`requireRole(['MANAGER', 'SALES_REP'])`).
+- [x] Comprehensive automated Vitest integration suite (16 test scenarios covering valid logins, enumeration prevention, token expiry/tampering, context attachment, role rejection, and database-authoritative dynamic role changes).
+- *Status*: **COMPLETED**
 
 ### Phase 4: Companies Module
 - [ ] Company validation schemas (`company.validator.ts`).
@@ -191,6 +192,7 @@ We built **database-first and backend-first**:
 ### What did you estimate versus what it actually took?
 - *Foundation & Architecture (Phase 0-1)*: Estimated 2.5 hours, took ~2 hours.
 - *Database Schema, Migrations & Seed (Phase 2)*: Estimated 1.5 hours, took ~1 hour.
+- *Authentication & Authorization Foundation (Phase 3)*: Estimated 1.0 hour, took ~45 mins.
 - *(Remaining phases to be updated as completed)*.
 
 ### What did you cut when you ran short?

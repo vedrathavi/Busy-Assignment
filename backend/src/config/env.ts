@@ -8,7 +8,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DIRECT_URL: z.string().optional(),
-  JWT_SECRET: z.string().default('super-secret-sales-crm-jwt-key-change-in-production'),
+  JWT_SECRET: z.string().min(1, 'JWT_SECRET is required and must not be empty'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
 });

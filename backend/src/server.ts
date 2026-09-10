@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { env } from './config/env';
 
+// Initialize Express application instance
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
