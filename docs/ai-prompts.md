@@ -75,3 +75,64 @@ Each significant entry records:
   - Fixed Prisma 7 breaking configuration changes by adopting Prisma 6 for standard client generation.
   - Fixed Vite / `@vitejs/plugin-react` peer dependency compatibility during frontend scaffolding.
 - **Final outcome**: Monorepo foundation, compilation pipelines, testing suites, and documentation fully configured and operational.
+
+---
+
+## 2026-09-10 - Prompt 03 - Phase 0/1: Comprehensive Architecture & Relational Schema Formalization
+
+- **Problem / Task**: Formalize the complete domain architecture, relational schema, authorization matrix, state machine rules, and decision records across documentation files prior to code implementation.
+- **User Intent**: Synthesize in-depth domain discussions into authoritative project documentation (`docs/architecture.md`, `docs/schema.md`, `docs/decisions.md`, `docs/plan.md`) strictly aligned with the 10 mandatory assignment requirements, including the genuine decision reversal on sales rep visibility.
+- **Prompt given to ChatGPT**:
+  > *"Extensive architectural interview analyzing entity relationships (Organization, Team, User, Company, Deal, Collaborator, History, Alert), deal lifecycle constraints, exact monetary types, server-side authorization boundaries, and resolving whether sales reps should have team-wide read visibility versus strict scoped visibility."*
+- **Important ChatGPT recommendation**:
+  - Include `Organization` and `Team` models for future structural extensibility, but strictly seed and operate on 1 organization and 1 team without multi-tenant UI or tenant-switching overhead.
+  - Reverse the earlier thought of team-wide read visibility back to strict scoped visibility (reps see only owned/collaborated deals and companies) to comply with the explicit assignment brief.
+  - Represent deal monetary values as exact decimals (`NUMERIC`/`Decimal`) and derive weighted values on the fly (`value * probability`) to avoid stale data.
+  - Treat `DealHistory` as an append-only audit trail with zero edit/delete routes.
+  - Derive overdue alert states dynamically without background cron jobs.
+- **Actual prompt sent to IDE / Code Assistant**:
+  > Provided comprehensive 28-point architectural mandate instructing full updates to `docs/architecture.md`, `docs/schema.md`, `docs/decisions.md`, and `docs/plan.md` without implementing CRM feature code, endpoints, UI, or Prisma migrations.
+- **What IDE / Code Assistant implemented**:
+  - `docs/architecture.md`: Documented feature-based modular architecture, Mermaid component diagrams, sequential request flow (Advance Deal), layer separation of concerns, and authoritative authorization boundaries.
+  - `docs/schema.md`: Specified all 8 entities, column types, cardinalities, Mermaid ER diagram, database vs. application constraint matrix, denormalization rationale, and 100x scale failure modes.
+  - `docs/decisions.md`: Authored 14 detailed ADRs including Decision 9 (the genuine visibility reversal), Supabase PostgreSQL hosting, exact decimal money, and deferred stretch features.
+  - `docs/plan.md`: Structured 13 sequential dependency-ordered phases from foundation to deployment and answered all retrospective planning questions.
+- **Human review / testing**: Verified documentation consistency across all four files; verified that no premature feature code or migrations were generated.
+- **Corrections or rejected suggestions**: None.
+- **Final outcome**: System architecture and relational design fully specified and frozen in documentation.
+
+---
+
+## 2026-09-10 - Prompt 04 - Pre-Phase 2: Final Cross-Document Consistency Pass
+
+- **Problem / Task**: Perform a final consistency check across all documentation (`docs/schema.md`, `docs/architecture.md`, `docs/decisions.md`, `docs/plan.md`, `README.md`) before creating Prisma schema or database migrations in Phase 2.
+- **User Intent**: Guarantee complete internal harmony across 4 critical areas:
+  1. `Deal.expectedCloseDate`: Modeled strictly as PostgreSQL `DATE` / Prisma `DateTime @db.Date` without time-of-day or timezone skew.
+  2. Collaborator Authorization: Both Sales Manager and Deal Owner can add/remove collaborators; collaborators can update deals but cannot manage other collaborators. Eliminate any "owner only" ambiguities.
+  3. Sales-Rep Company Visibility: Explicitly document the repository query scoping so reps see only owned companies and companies with accessible deals.
+  4. `DealHistory` Deletion Semantics: Document why `ON DELETE RESTRICT` is used on `DealHistory.dealId` to prevent casual destruction of immutable audit history, how Goal 3 (deals can be deleted) is preserved for deals without lifecycle history, and avoid silently inventing unrequested features.
+- **Prompt sent to IDE / Code Assistant**:
+  > *"Before starting Phase 2 database implementation, perform one final consistency pass across: docs/schema.md, docs/architecture.md, docs/decisions.md, docs/plan.md, README.md. Do NOT implement code yet. Fix these specific inconsistencies: 1. Deal.expectedCloseDate ... 2. Collaborator authorization ... 3. Sales-rep company visibility ... 4. DealHistory deletion semantics ... 5. Keep existing architecture decisions intact ... Report exactly what was changed, any remaining ambiguity, whether docs are now internally consistent. Do NOT create Prisma schema/migrations yet."*
+- **What IDE / Code Assistant implemented**:
+  - `docs/schema.md`:
+    - Updated `DEAL_ALERT` schema with `dismissedCloseDate: DATE (@db.Date)` and `dismissedAt: TIMESTAMP` for exact calendar date comparisons.
+    - Added both raw SQL and Prisma repository queries for sales-rep company visibility in Section 5.
+    - Expanded Section 6 to detail `ON DELETE RESTRICT` mechanics: new/erroneous deals with zero audit history can be deleted directly, while deals with stage transitions or notes are protected from deletion (preventing the "deleted from the sheet entirely" failure mode) without inventing soft-delete.
+  - `docs/architecture.md`:
+    - Updated the authorization flowchart to explicitly show the collaborator management check.
+    - Updated the Authorization Matrix:
+      - Explicitly documented dual authorization for **Manage Collaborators**: Sales Manager OR Deal Owner can add/remove; collaborating reps cannot manage collaborators.
+      - Added explicit row for **Delete Deal** detailing `ON DELETE RESTRICT` protection.
+      - Added explicit repository query for **View Companies**.
+  - `docs/decisions.md`:
+    - Updated Decision 9 with explicit SQL and Prisma repository queries for company scoping.
+    - Updated Decision 10 confirming `DATE (@db.Date)` for `expectedCloseDate` and `dismissedCloseDate`.
+    - Updated Decision 13 confirming that both Sales Manager and Deal Owner can add/remove collaborators.
+    - Updated Decision 14 detailing `ON DELETE RESTRICT` trade-offs vs. `ON DELETE CASCADE` and how Goal 3 deal deletion is handled without inventing soft delete.
+  - `docs/plan.md`:
+    - Updated Phase 2, Phase 4, and Phase 5 checklists with exact `DATE` types, repository scoping queries, and deletion error handling.
+- **Human review / testing**: Verified cross-document consistency across all 4 files against `README.md`; confirmed zero code modifications or migration executions.
+- **Corrections or rejected suggestions**: None.
+- **Final outcome**: All 4 documentation files are 100% harmonized, internally consistent, and ready for Phase 2 database schema implementation upon user authorization.
+
+

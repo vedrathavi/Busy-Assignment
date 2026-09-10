@@ -1,115 +1,267 @@
 # System Architecture
 
-This document describes the high-level architecture, module boundaries, component communication, and design principles of the Sales CRM application.
+This document describes the high-level architecture, module boundaries, component communication, layered responsibilities, request flows, authorization boundaries, and design principles of the Sales CRM application.
+
+---
 
 ## 1. High-Level Architecture Overview
 
-The application is structured as a decoupled Single-Page Application (SPA) communicating over RESTful HTTP APIs with a modular Node.js/Express backend, backed by PostgreSQL via Prisma ORM.
+The system is designed as a **feature-based modular architecture with layered separation of concerns**. It separates the presentation tier (React Single-Page Application) from the authoritative application tier (Node.js/Express REST API), backed by a relational persistence layer (PostgreSQL hosted on Supabase, accessed via Prisma ORM).
 
+```mermaid
+graph TD
+    subgraph Client ["Client Tier (Browser / Vercel)"]
+        UI["React 18 + TypeScript SPA"]
+        RQ["TanStack Query (Server Cache)"]
+        Router["React Router v7"]
+        UI --> RQ
+        UI --> Router
+    end
+
+    subgraph Server ["Authoritative Application Tier (Node.js / Express / Render)"]
+        API["Express REST API (Port 5000)"]
+        MW["Cross-Cutting Middleware (Auth, CORS, Zod, Error Handler)"]
+        
+        subgraph Modules ["Feature Modules"]
+            AuthMod["auth"]
+            UsersMod["users"]
+            CompMod["companies"]
+            DealsMod["deals"]
+            DashMod["dashboard"]
+            AlertsMod["alerts"]
+        end
+        
+        API --> MW
+        MW --> Modules
+    end
+
+    subgraph Persistence ["Persistence Tier (Supabase)"]
+        Prisma["Prisma ORM Client (v6)"]
+        DB[(PostgreSQL Database)]
+        Modules --> Prisma
+        Prisma --> DB
+    end
 ```
-┌────────────────────────────────────────────────────────┐
-│                   React + Vite SPA                     │
-│    (Tailwind CSS, TanStack Query, React Router)        │
-└───────────────────────────┬────────────────────────────┘
-                            │ HTTP / JSON (Axios)
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│               Node.js + Express Backend                │
-│                                                        │
-│  [Cross-Cutting: Auth Middleware, CORS, Error Handler] │
-│                                                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │ Feature Modules:                                 │  │
-│  │ • auth      • users       • companies            │  │
-│  │ • deals     • dashboard   • alerts               │  │
-│  └────────────────────────┬─────────────────────────┘  │
-│                           │                            │
-│                           ▼                            │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │ Layered Dependency Flow:                         │  │
-│  │ Routes → Controllers → Services → Policies/Repos │  │
-│  └────────────────────────┬─────────────────────────┘  │
-└───────────────────────────┼────────────────────────────┘
-                            │ Prisma Client
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│                 PostgreSQL Database                    │
-│    (Users, Companies, Deals, Collaborators, History)   │
-└────────────────────────────────────────────────────────┘
-```
+
+### Component Placement & Execution Environments
+- **Frontend SPA**: Runs in the end-user's web browser, served statically via **Vercel** (or local Vite server at `http://localhost:5173`).
+- **Backend REST API**: Runs as a long-lived Node.js service hosted on **Render** (or locally at `http://localhost:5000`). It is the authoritative security, authorization, and business-rule boundary.
+- **Database**: Managed PostgreSQL instance hosted on **Supabase** (Tokyo region `aws-0-ap-northeast-1`), utilizing transaction pooling (port `6543`) for application queries and session pooling (port `5432`) for schema migrations.
 
 ---
 
 ## 2. Moving Pieces & Inter-Process Communication
 
-1. **Frontend Client (Port 5173)**:
-   - Built with React 18, Vite, and TypeScript.
-   - Styled with Tailwind CSS.
-   - Server state, query caching, and optimistic updates managed by TanStack Query.
-   - Client-side routing with React Router.
-   - Communicates with the backend REST API via Axios with JWT authorization headers.
+1. **Frontend Tier (React + TypeScript + Vite + Tailwind CSS)**:
+   - Client-side navigation via React Router.
+   - Server-state synchronization, background refetching, and cache invalidation via TanStack Query.
+   - HTTP transport via Axios, configured with request interceptors to inject Bearer JWT credentials.
+   - Lightweight visualization via Recharts for dashboard analytics.
+   - Responsive, accessible UI styled with Tailwind CSS.
 
-2. **Backend API Server (Port 5000)**:
-   - Built with Node.js, Express, and TypeScript.
-   - Organized into self-contained feature modules (`auth`, `users`, `companies`, `deals`, `dashboard`, `alerts`).
-   - Cross-cutting concerns (authentication guards, role authorization, centralized error handling, environment validation) reside in shared infrastructure layers.
-   - Strict runtime request validation using Zod.
+2. **Backend Application Tier (Express + TypeScript)**:
+   - Stateless HTTP REST API.
+   - Request authentication using JWT and bcrypt password verification.
+   - Strict runtime request validation using Zod schemas before hitting business logic.
+   - Centralized error-handling pipeline converting domain exceptions (`AppError`) into structured HTTP responses.
 
-3. **Database Layer (PostgreSQL)**:
-   - Strongly relational database enforcing foreign keys, unique constraints, and check conditions.
-   - Managed via Prisma ORM schemas, migrations, and type-safe query generation.
+3. **Database Tier (Supabase PostgreSQL + Prisma ORM)**:
+   - Strictly relational data model enforcing primary keys, foreign keys, unique constraints, and check conditions.
+   - Prisma Client providing compile-time type safety and migration tracking.
 
----
-
-## 3. Backend Module Layering & Request Flow
-
-Within each business module, dependencies follow a strict one-way flow:
-
-```
-HTTP Request
-     │
-     ▼
-[Express Route]
-     │ (Applies authMiddleware, roleGuard, zodValidator)
-     ▼
-[Controller]
-     │ (Extracts params/body, delegates to Service)
-     ▼
-[Service Layer]
-     │ (Coordinates business workflows, applies transaction bounds)
-     ▼
-[Domain Policies & Repositories]
-     │ (Enforces domain invariants, stage transitions, data access)
-     ▼
-[Prisma Client]
-     │
-     ▼
-[PostgreSQL]
-```
-
-### Representative Request Path: Deal Stage Transition
-1. **User Action**: Rep changes deal stage on the frontend UI.
-2. **Frontend Call**: Axios sends `PATCH /api/deals/:id/stage` with `{ stage, reason }` and Bearer JWT.
-3. **Authentication Middleware**: Verifies JWT signature, attaches `req.user = { userId, role }`.
-4. **Validation Middleware**: Zod validates the incoming body against `stageTransitionSchema`.
-5. **Deal Controller**: Calls `DealService.transitionStage(dealId, newStage, reason, req.user)`.
-6. **Deal Domain Policy (`DealTransitionPolicy`)**: 
-   - Checks if user is owner/collaborator/manager.
-   - Validates forward/backward transition rule validity.
-   - Validates that closed deals can only be reopened by a `MANAGER`.
-   - Ensures a backward transition includes an explicit explanation.
-7. **Deal Repository & Transaction**:
-   - Updates `Deal.stage` in PostgreSQL.
-   - Inserts an immutable audit record into `DealHistory`.
-8. **HTTP Response**: Returns updated deal and history timeline to the client.
-9. **Frontend Invalidation**: TanStack Query invalidates `['deals']` and `['dashboard']` caches, triggering seamless UI update.
+> [!IMPORTANT]
+> **Supabase Boundary Principle**: Supabase is strictly used as a managed PostgreSQL hosting provider. We do **not** use Supabase Auth, the Supabase JS Client, PostgREST Data API, Supabase Realtime, Storage, or Edge Functions. All authentication, authorization, business rules, and API endpoints are strictly executed and enforced by the Express application server.
 
 ---
 
-## 4. What Was Deliberately NOT Built (Scope & Complexity Guardrails)
+## 3. Backend Module Structure & Layered Responsibilities
 
-- **Multi-Tenancy Abstractions**: No `Tenant`, `Organization`, or `Subscription` entities. The system is intentionally scoped to a single sales organization.
-- **Microservices & Event Brokers**: No Kafka, RabbitMQ, or Redis. A monolithic modular architecture is simpler, more reliable, and fully suited to the requirements.
-- **WebSockets / Server-Sent Events**: Standard TanStack Query polling and cache invalidation provide excellent responsiveness without socket reconnection overhead.
-- **GraphQL**: REST endpoints with Zod schemas provide explicit, easily tested contracts.
+The backend is structured around business domains rather than horizontal technical silos. Each business domain resides in its own module under `backend/src/modules/`:
 
+```
+backend/src/
+├── config/                  # Validated environment configuration (env.ts)
+├── database/                # Database connection & Prisma client singleton
+├── middleware/              # Cross-cutting HTTP middleware (auth, error, logging)
+├── errors/                  # Standard domain error hierarchy (AppError, etc.)
+├── utils/                   # Pure helper functions
+├── modules/
+│   ├── auth/                # Authentication, JWT issuance, login
+│   ├── users/               # Team member discovery for collaborator selection
+│   ├── companies/           # Company lifecycle, archiving, restore
+│   ├── deals/               # Deals CRUD, lifecycle, transition policies, collaborators, timeline
+│   ├── dashboard/           # Pipeline aggregations, win rates, weekly trend metrics
+│   └── alerts/              # Overdue deal detection & dismissal tracking
+├── app.ts                   # Express application factory & middleware pipeline
+└── server.ts                # Server bootstrap & graceful shutdown
+```
+
+### Layered Dependency Direction within Modules
+
+Within any complex module (such as `deals` or `companies`), execution flows strictly downward:
+
+```mermaid
+graph TD
+    A[HTTP Request] --> B[Express Route]
+    B --> C[Middleware: Auth & Zod Validator]
+    C --> D[Controller]
+    D --> E[Service Layer]
+    E --> F[Domain Policies & Rules]
+    E --> G[Repository Layer]
+    G --> H[Prisma ORM Client]
+    H --> I[(PostgreSQL Database)]
+```
+
+### Separation of Concerns:
+- **Routes (`*.routes.ts`)**: Define HTTP verbs, URL paths, and mount relevant route-level middleware (authentication guards, role checks, validation schemas).
+- **Controllers (`*.controller.ts`)**: Pure HTTP adapters. Extract query/route params and request bodies, invoke the appropriate Service method, and format the HTTP response. Controllers contain **no business logic**.
+- **Services (`*.service.ts`)**: Coordinate business use cases. Manage database transactions, call domain policies to enforce rules, delegate data retrieval/mutation to repositories, and return typed domain objects.
+- **Domain Policies (`*.policy.ts`)**: Pure business invariant engines. Classes such as `DealTransitionPolicy` encapsulate rules like valid stage movement, backward transition reasons, and closed-deal protection. They are decoupled from HTTP and easily unit-tested.
+- **Repositories (`*.repository.ts`)**: Encapsulate all database queries and Prisma calls. Prevent Prisma query syntax from leaking across services.
+- **Validators (`*.validator.ts`)**: Zod schemas that validate untrusted input payloads and query parameters at the network perimeter.
+
+---
+
+## 4. End-to-End Representative Request Path
+
+### Scenario: Sales Rep Advances a Deal from Proposal to Negotiation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Rep as Sales Rep (Browser)
+    participant UI as React UI (TanStack Query)
+    participant HTTP as Express Route (/api/deals/:id/stage)
+    participant Auth as Auth Middleware
+    participant Val as Zod Validator
+    participant Ctrl as DealController
+    participant Svc as DealService
+    participant Pol as DealTransitionPolicy
+    participant Repo as DealRepository
+    participant DB as PostgreSQL (Supabase)
+
+    Rep->>UI: Clicks "Advance Stage"
+    UI->>HTTP: PATCH /api/deals/deal-123/stage { stage: "NEGOTIATION" } (Bearer JWT)
+    HTTP->>Auth: Verify JWT signature & extract { userId, role }
+    Auth-->>HTTP: req.user attached
+    HTTP->>Val: Validate request payload schema
+    Val-->>HTTP: Payload valid
+    HTTP->>Ctrl: advanceDealStage(req, res, next)
+    Ctrl->>Svc: transitionStage("deal-123", "NEGOTIATION", undefined, req.user)
+    Svc->>Repo: findByIdWithAccessCheck("deal-123")
+    Repo->>DB: SELECT deal with owner and collaborators
+    DB-->>Repo: Deal record returned
+    Repo-->>Svc: Deal domain object
+    
+    Svc->>Pol: canAccessAndModify(deal, req.user)
+    Pol-->>Svc: Access GRANTED (User is Owner or Collaborator)
+    
+    Svc->>Pol: validateTransition(currentStage: "PROPOSAL", targetStage: "NEGOTIATION", reason: undefined, userRole: "SALES_REP")
+    Pol-->>Svc: Transition VALID (Sequential forward move)
+
+    Svc->>Repo: executeStageTransitionTx("deal-123", "PROPOSAL", "NEGOTIATION", req.user.id)
+    activate Repo
+    Repo->>DB: BEGIN TRANSACTION
+    Repo->>DB: UPDATE "Deal" SET stage = 'NEGOTIATION', updatedAt = NOW() WHERE id = 'deal-123'
+    Repo->>DB: INSERT INTO "DealHistory" (type, dealId, actorId, oldStage, newStage, createdAt) VALUES ('STAGE_CHANGED', 'deal-123', req.user.id, 'PROPOSAL', 'NEGOTIATION', NOW())
+    Repo->>DB: COMMIT
+    DB-->>Repo: Transaction Committed
+    deactivate Repo
+
+    Repo-->>Svc: Updated Deal & New History Record
+    Svc-->>Ctrl: Result DTO
+    Ctrl-->>UI: HTTP 200 OK { success: true, data: { deal, history } }
+    UI->>UI: TanStack Query invalidates ['deals'] and ['dashboard']
+    UI-->>Rep: Renders updated pipeline and timeline instantly
+```
+
+---
+
+## 5. Authoritative Server-Side Authorization Boundary
+
+Security and visibility are enforced strictly on the backend. Client-side hiding is purely for user experience:
+
+```mermaid
+flowchart TD
+    Req[Incoming Request] --> AuthCheck{JWT Valid?}
+    AuthCheck -- No --> R401[401 Unauthorized]
+    AuthCheck -- Yes --> RoleCheck{User Role?}
+    
+    RoleCheck -- MANAGER --> ManagerAccess[Access ALL Team Companies & Deals]
+    
+    RoleCheck -- SALES_REP --> RepAccess{Resource Scoped?}
+    RepAccess -- View/Edit Deal --> DealCheck{Is Owner OR Collaborator?}
+    DealCheck -- Yes --> AllowDeal[Allow Access]
+    DealCheck -- No --> DenyDeal[403 Forbidden / 404 Not Found]
+    
+    RepAccess -- Manage Collaborators --> CollabCheck{Is Deal Owner?}
+    CollabCheck -- Yes --> AllowCollab[Allow Add/Remove]
+    CollabCheck -- No --> DenyCollab[403 Forbidden - Collaborators Cannot Manage Collaborators]
+    
+    RepAccess -- Company --> CompCheck{Is Company Owner OR Associated Deal Access?}
+    CompCheck -- Yes --> AllowComp[Allow Access]
+    CompCheck -- No --> DenyComp[403 Forbidden / 404 Not Found]
+```
+
+### Authorization Matrix
+
+| Capability | Sales Rep | Sales Manager | Enforcement Point & Repository Rule |
+| :--- | :---: | :---: | :--- |
+| **View Companies** | **Scoped only**: companies they own, OR associated with deals they own/collaborate on | All team companies | `CompanyRepository`: `WHERE teamId = :teamId AND (ownerId = :userId OR id IN (SELECT companyId FROM "Deal" WHERE ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId)))` |
+| **Create Company** | Direct (self-assigned owner) | Direct (can assign any rep) | `CompanyService` validation |
+| **Edit / Archive Company** | Owned companies only | All team companies | `CompanyPolicy.canModify()` |
+| **View Deals** | **Scoped only**: deals they own, OR collaborate on | All team deals | `DealRepository`: `WHERE ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId)` |
+| **Create Deal** | Direct on accessible companies | Direct on any team company | `DealService` validation (blocks creation on archived companies) |
+| **Edit Deal Details** | Owned or collaborated deals | All team deals | `DealPolicy.canModify()` |
+| **Advance / Move Back Deal** | Owned or collaborated deals | All team deals | `DealTransitionPolicy` (enforces 1-step, reason on backward, closed restrictions) |
+| **Delete Deal** | Owned deals (only if zero audit history exists) | All team deals (only if zero audit history exists) | `DealPolicy.canDelete()`: Database enforces `ON DELETE RESTRICT` on `DealHistory`. Deals with stage changes or notes cannot be deleted; must be marked Lost. |
+| **Reopen Closed Deal** | ❌ Forbidden | ✅ Allowed (returns to `previousStage`) | `DealTransitionPolicy.canReopen()` (Manager role required) |
+| **Reassign Deal Owner** | ❌ Forbidden | ✅ Allowed (single & bulk) | `DealPolicy.canReassign()` (Manager role required) |
+| **Manage Collaborators** | Allowed **only if rep is Deal Owner** (collaborators cannot manage other collaborators) | **Allowed on any deal** in team | `DealPolicy.canManageCollaborators()`: Only Sales Manager OR Deal Owner can add/remove collaborators (`POST /api/deals/:id/collaborators` and `DELETE /api/deals/:id/collaborators/:userId`) |
+| **Bulk Actions & CSV** | CSV export for accessible deals | Bulk reassign, bulk advance, CSV | `DealService` & `BulkDealService` (supports partial success reporting) |
+| **Overdue Alerts** | View & dismiss own overdue deals | View all team overdue deals | `AlertPolicy` & `AlertRepository` |
+| **Audit History** | Read accessible deal timeline | Read all deal timelines | Append-only: `ON DELETE RESTRICT` in DB; zero update/delete API routes |
+
+---
+
+## 6. What Was Deliberately NOT Built (Scope & Complexity Guardrails)
+
+To remain strictly within the ~12-hour engineering budget while maximizing maintainability and correctness, the following systems were deliberately excluded:
+
+1. **Multi-Tenancy SaaS Infrastructure**:
+   - *Excluded*: Organization switchers, tenant isolation middleware, subscription tiers, billing engines, cross-team dashboards.
+   - *Rationale*: The assignment targets a single sales team. While `Organization` and `Team` entities exist in the schema for clean structural extensibility, the application seeds and operates on exactly one organization and one team.
+2. **Microservices & Message Brokers (Kafka / RabbitMQ / Redis)**:
+   - *Excluded*: Distributed event streaming, external pub/sub, Redis caching.
+   - *Rationale*: A modular monolith with co-located business modules is substantially simpler to reason about, test, deploy, and verify. PostgreSQL provides full transactional integrity.
+3. **WebSockets / Server-Sent Events**:
+   - *Excluded*: Live socket streaming for pipeline updates.
+   - *Rationale*: Standard TanStack Query polling and cache invalidation provide instant UI responsiveness without connection leaks, heartbeat management, or socket server overhead.
+4. **GraphQL**:
+   - *Excluded*: GraphQL resolvers, schemas, and client cache complexities.
+   - *Rationale*: Explicit REST endpoints paired with Zod contracts offer predictable HTTP status codes, straightforward caching, and rapid implementation.
+5. **Generic Approval Workflow Engine**:
+   - *Excluded*: `ApprovalRequest` entity with pending states for creations.
+   - *Rationale*: Direct company and deal creation is the expected standard CRM flow. Introducing approval bottlenecks for every rep creation would degrade usability and exceed assignment scope.
+6. **Deep Class Inheritance Hierarchies**:
+   - *Excluded*: Abstract base controllers, generic repository base classes, entity class hierarchies (`Manager extends User`).
+   - *Rationale*: Favor composition and dependency injection over inheritance. Roles are represented as typed data/enums, not subclasses.
+
+---
+
+## 7. Scalability & Query Performance Strategy
+
+At 100x data volume (~100,000+ deals, ~1,000,000+ history events), the system maintains stability through targeted database and query design:
+
+1. **Server-Side Pagination & Bounded Windows**:
+   - All deal and company discovery queries require `page` and `limit` parameters, returning total record counts via indexed queries. Unbounded `findMany()` calls are forbidden.
+2. **Targeted Composite Indexing**:
+   - Indexed foreign keys and search paths: `(teamId, stage, expectedCloseDate)`, `(dealId, userId)`, and `(companyId, isArchived)`.
+3. **Calendar Date Arithmetic**:
+   - `Deal.expectedCloseDate` is stored as a PostgreSQL `DATE` (`@db.Date`), eliminating timezone conversion overhead and ensuring index scans on date boundaries operate at peak performance.
+4. **Zero N+1 Queries**:
+   - Prisma `include` and relational joins are strictly structured to fetch deals with company names and collaborator avatars in a single round-trip.
+5. **Dynamic Value Derivation over Stale Denormalization**:
+   - Weighted pipeline values (`deal.value * stage.probability`) are computed dynamically in SQL or service aggregation, preventing data synchronization anomalies.
+6. **Append-Only History Scaling**:
+   - `DealHistory` is indexed on `(dealId, createdAt DESC)` and protected by `ON DELETE RESTRICT`. If history scales into millions of rows, PostgreSQL table partitioning on `dealId` or timestamp ranges can be adopted without changing application business logic.
