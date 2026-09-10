@@ -303,3 +303,63 @@ Each significant entry records:
   - Minimized JWT claims to `sub: user.id` to ensure role/org/team are always loaded fresh from the database on every request.
   - Tested `requireRole()` using an isolated router in `auth.test.ts` instead of adding placeholder test routes to production code.
 - **Final outcome**: Phase 3 is 100% completed, tested, and validated. Ready for Phase 4 (Companies Module).
+
+---
+
+## 2026-09-10 - Prompt 08 - Phase 4: Companies Module & Server-Side Visibility Scoping
+
+- **Problem / Task**: Implement Phase 4: Companies feature module with full CRUD, archive, restore, and strict server-side Sales Rep visibility scoping (ownership + accessible deals) and Manager team scoping.
+- **User Intent**:
+  - Implement endpoints: `POST /api/companies`, `GET /api/companies`, `GET /api/companies/:id`, `PATCH /api/companies/:id`, `POST /api/companies/:id/archive`, `POST /api/companies/:id/restore`.
+  - All company endpoints require `authenticateToken`.
+  - Scoped visibility: Manager sees all team companies; Sales Rep sees owned companies OR companies associated with deals they own or collaborate on.
+  - Rep deal-based visibility is strictly evaluated in Prisma database queries (`deals.some({ teamId, OR: [{ ownerId }, { collaborators }] })`).
+  - Unauthorized `GET /api/companies/:id` returns 404 (IDOR prevention).
+  - Editing, archiving, and restoring restricted to Managers or the company's owning Sales Rep (deal collaboration grants view visibility, NOT edit permission).
+  - Owner reassignment restricted to Managers.
+  - Archive/restore are state changes (`isArchived: boolean`), not deletions.
+  - Comprehensive automated Vitest tests covering all 30 scenarios.
+  - No Deals APIs or Phase 5+ functionality implemented.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/companies/company.types.ts`:
+    - Declared `CompanyResponse`, `CompanyOwnerSummary`, `CreateCompanyInput`, `UpdateCompanyInput`, `CompanyListQuery`, and `CompanyListResponse`.
+  - `backend/src/modules/companies/company.validator.ts`:
+    - `createCompanySchema`: validates `name` (1-255), `industry` (1-100), `website` (URL or null), `ownerId` (UUID).
+    - `updateCompanySchema`: partial schema ensuring at least one field is provided.
+    - `companyQuerySchema`: validates `isArchived` (`'false'`, `'true'`, `'all'`), `search`, `page`, `limit` (max 100), `sortBy`, `sortOrder`.
+    - `companyIdParamSchema`: validates UUID route param `:id`.
+  - `backend/src/modules/companies/company.policy.ts`:
+    - `CompanyPolicy` class encapsulating `canCreate`, `canEdit`, `canReassignOwner`, `canArchive`, and `canRestore`.
+  - `backend/src/modules/companies/company.repository.ts`:
+    - `buildVisibilityFilter(user)`: generates database-level Prisma `where` clause.
+    - `create()`: inserts company with team and owner.
+    - `findVisibleById()`: searches company applying visibility filter (returns `null` for unpermitted access).
+    - `findByIdForTeam()`: retrieves company within team boundary.
+    - `listVisible()`: executes paginated, filtered, searched query with `$transaction` count.
+    - `update()`: updates company attributes.
+    - `setArchiveStatus()`: updates `isArchived` flag.
+  - `backend/src/modules/companies/company.service.ts`:
+    - `CompanyService` coordinating policy checks, owner validations, and repository operations.
+  - `backend/src/modules/companies/company.controller.ts`:
+    - `CompanyController` handling HTTP requests/responses (201 for create, 200 for list/get/update/archive/restore).
+  - `backend/src/modules/companies/company.routes.ts`:
+    - Mounted all 6 company routes with `authenticateToken`.
+  - `backend/src/app.ts`:
+    - Mounted `companyRouter` at `/api/companies`.
+  - `backend/src/__tests__/companies.test.ts`:
+    - 30 comprehensive Vitest integration tests covering:
+      1. Authentication perimeter (401 on unauthenticated requests).
+      2. Creation: Rep creates owned company; Rep cannot assign to other rep; Manager creates and assigns to team rep; Manager cannot assign cross-team; validation errors return 400.
+      3. Scoped Visibility: Manager sees all team companies; Rep Alex sees owned companies and deal-accessible companies (Stellar Cloud, Horizon Retail); Rep Priya sees owned companies and deal-accessible companies (Stellar Cloud, Zenith Health, Beacon Clean Energy); Rep does not see unrelated companies (Acme/Vortex for Priya); direct ID lookup on unauthorized company returns 404 (IDOR protection); keyword search and pagination metadata work.
+      4. Editing: Manager edits team company; Rep edits owned company; Rep cannot edit another rep's company (403); Rep cannot edit company merely because they collaborate on its deal (403); Rep cannot reassign company ownership (403); Manager can reassign ownership (200).
+      5. Archive & Restore: Rep archives owned company; archived company excluded from default list but returned when `isArchived=true` or `isArchived=all`; direct ID lookup returns archived company; Rep cannot archive another rep's company (403); Rep restores owned company; Manager archives and restores team company; Rep cannot restore another rep's company (403).
+      6. Safety: `passwordHash` is never returned; 404 returned for non-existent UUIDs.
+- **Human review / testing**:
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm test` (vitest): 47/47 tests passed (1 health + 16 auth + 30 companies).
+  - Verified no Deals CRUD or Phase 5+ functionality was implemented.
+- **Corrections or rejected suggestions**:
+  - Replaced generic lookup with `findByIdForTeam(id, teamId)` so team isolation is enforced at the database level before policy checks.
+  - Explicitly aligned archive filter semantics: `false` (active only), `true` (archived only), `all` (both).
+  - Explicitly team-scoped deal-based company visibility query.
+- **Final outcome**: Phase 4 is 100% completed, tested, and validated. Ready for Phase 5 (Deals & Lifecycle State Machine).

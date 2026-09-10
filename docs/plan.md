@@ -73,16 +73,17 @@ graph TD
 - *Status*: **COMPLETED**
 
 ### Phase 4: Companies Module
-- [ ] Company validation schemas (`company.validator.ts`).
-- [ ] Create company endpoint (`POST /api/companies`).
-- [ ] List accessible companies endpoint with scoped rep visibility (`GET /api/companies`):
-  - Repository query: Reps see ONLY companies they own (`ownerId = user.id`) OR associated with deals they own/collaborate on (`companyId IN (deals where ownerId = user.id OR collaborator)`).
-  - Managers see all companies across the team.
-- [ ] View company details with associated deals (`GET /api/companies/:id`).
-- [ ] Edit company endpoint (`PATCH /api/companies/:id`).
-- [ ] Archive and restore endpoints (`POST /api/companies/:id/archive`, `/restore`).
-- [ ] Enforce rule: new deals blocked on archived companies.
-- *Status*: **PENDING**
+- [x] Company validation schemas (`company.validator.ts`) for creation, update, query parameters, and UUID parameters.
+- [x] Create company endpoint (`POST /api/companies`): Reps automatically own their created companies; Managers can assign to any team rep.
+- [x] List accessible companies endpoint with scoped rep visibility (`GET /api/companies`):
+  - Scoped database Prisma query: Reps see ONLY companies they own (`ownerId = user.id`) OR associated with deals they own or collaborate on (`deals.some({ teamId, OR: [{ ownerId }, { collaborators }] })`).
+  - Managers see all active companies across the team.
+  - Query parameters for `isArchived` (`'false'` active only, `'true'` archived only, `'all'` both), search (`name`/`industry`), and pagination.
+- [x] View company details endpoint (`GET /api/companies/:id`): Enforces visibility scoping; returns 404 for unpermitted/cross-team companies (IDOR protection).
+- [x] Edit company endpoint (`PATCH /api/companies/:id`): Managers can edit any team company; Reps can edit only owned companies (deal collaboration does NOT permit editing); owner reassignment restricted to Managers.
+- [x] Archive and restore endpoints (`POST /api/companies/:id/archive`, `POST /api/companies/:id/restore`): Managers can archive/restore team companies; Reps can archive/restore only owned companies.
+- [x] Comprehensive automated Vitest integration suite (30 test scenarios covering authentication, creation, scoping, IDOR protection, editing permissions, archive lifecycle, and safe owner responses).
+- *Status*: **COMPLETED**
 
 ### Phase 5: Deals & Lifecycle State Machine
 - [ ] Deal CRUD endpoints:
@@ -193,6 +194,7 @@ We built **database-first and backend-first**:
 - *Foundation & Architecture (Phase 0-1)*: Estimated 2.5 hours, took ~2 hours.
 - *Database Schema, Migrations & Seed (Phase 2)*: Estimated 1.5 hours, took ~1 hour.
 - *Authentication & Authorization Foundation (Phase 3)*: Estimated 1.0 hour, took ~45 mins.
+- *Companies Module (Phase 4)*: Estimated 1.0 hour, took ~45 mins.
 - *(Remaining phases to be updated as completed)*.
 
 ### What did you cut when you ran short?
