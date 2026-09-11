@@ -156,12 +156,14 @@ graph TD
 - *Status*: **COMPLETED**
 
 ### Phase 9: Dashboard Pipeline Metrics
-- [ ] Dashboard aggregation service (`GET /api/dashboard`) — excludes soft-deleted deals.
-- [ ] Headline metrics: Open deals count, total weighted pipeline, won this month, lost this month.
-- [ ] Breakdown metrics: Open deals by stage, open deals by owner.
-- [ ] Trend metrics: Deals won per week over the last 8 weeks.
-- [ ] Proper scoping: Manager sees team metrics; Sales Rep sees accessible metrics.
-- *Status*: **PENDING**
+- [x] Dashboard aggregation service & repository (`GET /api/dashboard`) computing all metrics at database level.
+- [x] Headline metrics: Open deals count, Decimal-exact weighted pipeline, won this month, lost this month.
+- [x] Breakdown metrics: Open deals by stage (all 4 open stages guaranteed), open deals by owner (safe profiles).
+- [x] Trend metrics: Deals won per week over the last 8 weeks (chronological, ISO Monday-Sunday half-open intervals).
+- [x] Strict server-side scoping: Manager sees team metrics; Sales Rep sees accessible metrics (owned/collaborated).
+- [x] Excluded soft-deleted deals from all metrics; used `closedAt` for closed metrics.
+- [x] Comprehensive automated Vitest integration suite (12 test scenarios covering scoping, IDOR immunity, Decimal calculations, stage/owner distributions, 8-week trend, and half-open month/week boundaries).
+- *Status*: **COMPLETED**
 
 ### Phase 10: Overdue Deal Alerts
 - [ ] Overdue deals detection query (`GET /api/alerts`) — excludes soft-deleted deals.

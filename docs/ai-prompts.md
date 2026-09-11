@@ -34,6 +34,7 @@ Each significant entry records:
 | **Phase 6 Audit** (Prompt 11) | Implementation Verification & Code Integrity Audit | Conduct rigorous 11-point verification audit reviewing git diffs against Phase 5 baseline, proving zero weakened assertions, strict authorization, IDOR protection, transactional history, and 118/118 passing tests without code modifications. |
 | **Phase 7** (Prompt 12) | Bulk Operations & Pipeline CSV Export | Implement Manager bulk reassign (`POST /api/deals/bulk/reassign`), Manager bulk advance (`POST /api/deals/bulk/advance`), Pipeline CSV export (`GET /api/deals/export`), partial success handling, existing transition policy reuse, previousStage preservation, and 16 Vitest tests. |
 | **Phase 8** (Prompt 13) | Deal Search, Filtering, Sorting & Pagination | Implement database-level search (`title` OR `company.name` case-insensitive), strict filters (`companyId`, `stage`, `ownerId`), deterministic sorting (`value`, `expectedCloseDate`, `updatedAt` + `id`), server-side pagination (`page`, `pageSize`, `limit`), pre-pagination `total`, and 30 Vitest tests. |
+| **Phase 9** (Prompt 14) | Dashboard Pipeline Metrics & Analytics | Implement database-level dashboard API (`GET /api/dashboard`), open deals, exact Decimal weighted pipeline, won/lost this month (`closedAt`), 4-stage distribution, safe owner breakdown, 8-week win trend (ISO Monday-Sunday half-open intervals), and 12 Vitest tests. |
 
 ---
 
@@ -639,6 +640,44 @@ Each significant entry records:
   - Complete backend test suite (`npm test`): 164 / 164 tests passed across all 7 test suites (100%).
 - **Corrections or rejected suggestions**: None.
 - **Final outcome**: Phase 8 is 100% completed, tested, audited, and ready for commit.
+
+---
+
+## 2026-09-11 - Prompt 14 - Phase 9: Dashboard Pipeline Metrics & Analytics
+
+- **Problem / Task**: Implement a backend Dashboard & Analytics API (`GET /api/dashboard`) computing open deals count, Decimal-exact weighted pipeline, won/lost this month, stage/owner distributions, and an 8-week win trend entirely at the database level with strict server-side scoped visibility.
+- **User Intent**:
+  - Open deals count: active open deals (`NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`), excluding `WON`, `LOST`, and soft-deleted deals.
+  - Weighted pipeline: sum of `deal.value * STAGE_PROBABILITY[stage]` calculated Decimal-safe at the database level.
+  - Won / Lost this month: using `closedAt` with half-open intervals `[startOfMonth, startOfNextMonth)`.
+  - Open deals by stage: guaranteed counts for all 4 open stages (including 0-count stages).
+  - Open deals by owner: grouped counts with safe owner name and ID, hiding unrelated owners from Sales Reps.
+  - Won per week: exactly 8 chronological weekly buckets (`weekStart` Monday to `weekEnd` Sunday in `YYYY-MM-DD` format) with half-open intervals `[oldestMonday, nextMondayAfterCurrentWeek)`.
+  - Half-open interval testing: explicit boundary tests for start of month, start of next month, Monday 00:00 UTC, Sunday 23:59:59.999 UTC, and next Monday 00:00 UTC.
+  - Server-side scoping: Managers see team deals; Sales Reps see owned and collaborated deals only.
+  - Front-end guidance noted for future phases (shadcn/ui, responsive design, react-icons/lucide, minimal clean theme, google fonts).
+- **Prompt given to ChatGPT**:
+  > *"Plan approved with adjustments: 1. Keep current architecture and reuse DealRepository.buildVisibilityFilter. 2. Use half-open date intervals for deterministic boundary handling (closedAt >= startOfMonth AND closedAt < startOfNextMonth; closedAt >= oldestMonday AND closedAt < nextMondayAfterCurrentWeek). 3. ISO weeks: Monday 00:00 UTC -> next Monday 00:00 UTC. 4. Add boundary tests. 5. Decimal-safe weighted pipeline. 6. Front-end standards noted. Implement Phase 9 backend, run tests and typecheck, report audit verdict without committing."*
+- **Important ChatGPT recommendation**:
+  - Made `DealRepository.buildVisibilityFilter` public to reuse authoritative visibility rules without duplicating query filters.
+  - Structured `DashboardRepository` to run parallel grouped counts/sums in a single `$transaction`.
+  - Guaranteed all 4 open stages and all 8 weekly buckets appear in responses with 0 counts when empty.
+  - Used half-open timestamps for monthly and weekly boundaries without relying on 23:59:59.999.
+- **Actual prompt sent to IDE / Code Assistant**:
+  > Implement Phase 9: `dashboard.types.ts`, `dashboard.repository.ts`, `dashboard.service.ts`, `dashboard.controller.ts`, `dashboard.routes.ts`, mount in `app.ts`, create `dashboard.test.ts` with 12 comprehensive integration tests including boundary tests.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/deals/deal.repository.ts`: Changed `buildVisibilityFilter` visibility to `public`.
+  - `backend/src/modules/dashboard/dashboard.types.ts`: Defined `StageCount`, `OwnerDealCount`, `WeeklyWonCount`, `DashboardData`, `DashboardResponse`.
+  - `backend/src/modules/dashboard/dashboard.repository.ts`: Implemented `getDashboardMetrics` with Prisma `groupBy`, `count`, half-open date intervals, Decimal arithmetic, and 8-week binning.
+  - `backend/src/modules/dashboard/dashboard.service.ts` & `dashboard.controller.ts` & `dashboard.routes.ts`: Exposed `GET /api/dashboard` guarded by `authenticateToken`.
+  - `backend/src/app.ts`: Mounted `/api/dashboard`.
+  - `backend/src/__tests__/dashboard.test.ts`: Created 12 comprehensive integration tests covering visibility scoping, IDOR immunity, Decimal calculations, stage/owner distributions, 8-week trends, and exact half-open boundaries.
+- **Human review / testing**:
+  - `npx tsc --noEmit`: Clean compilation with 0 TypeScript errors.
+  - Complete backend test suite (`npm test`): 176 / 176 tests passed across all 8 test suites (100%).
+- **Corrections or rejected suggestions**: None.
+- **Final outcome**: Phase 9 is 100% completed, tested, audited, and ready for commit.
+
 
 
 

@@ -209,3 +209,38 @@ This document records the major architectural, domain, and technology decisions 
   - **Future Restore Compatibility**: The architecture leaves clean room for restoring a deleted deal from Trash (clearing `deletedAt` and `deletedById`). Specific restore permissions and endpoints are marked **TBD** and not prematurely implemented.
   - **Company vs. Deal Separation**: Company archiving (`isArchived: boolean`) and Deal deletion (`deletedAt: timestamp?`, `deletedById: uuid?`) remain separate mechanisms.
 - **Trade-offs**: All active deal queries require filtering by `deletedAt IS NULL` (indexed via `@@index([teamId, deletedAt])`). Soft-deleted records consume database storage indefinitely, fulfilling compliance and audit requirements.
+
+---
+
+## Decision 15: Dedicated Server-Side Dashboard Analytics Endpoint (`/api/dashboard`)
+
+- **Context / Problem**: Deciding whether the frontend should calculate dashboard analytics (pipeline count, weighted pipeline value, monthly won/lost totals, stage/owner breakdowns, and 8-week win trends) by fetching all deals from `/api/deals` and computing metrics in JavaScript, or whether the backend should provide a dedicated analytics endpoint.
+- **Chose**: A dedicated backend `/api/dashboard` endpoint and module (`modules/dashboard`) computing all aggregate analytics directly at the database level using PostgreSQL queries and half-open date intervals.
+- **Rejected**: 
+  - Having the frontend download large deal datasets and compute aggregations in React components or client-side utilities.
+  - Bloating the CRUD `/api/deals` resource endpoint with analytics queries.
+  - Adding caching infrastructure (Redis, materialized views, background worker cron jobs) for a single-tenant CRM take-home application.
+- **Why**: 
+  - **Derived vs. Resource Data**: Dashboard metrics are derived/aggregated business analytics, not raw `Deal` CRUD entities. Separating CRUD operations (`/api/deals`) from analytics (`/api/dashboard`) adheres to the Single Responsibility Principle.
+  - **Database Efficiency**: PostgreSQL natively executes `COUNT`, `SUM`, `GROUP BY`, and date-range filtering in milliseconds without transmitting thousands of deal rows over the network.
+  - **Server-Side Authorization**: Calculating metrics server-side guarantees that Manager vs. Sales Rep visibility rules (`DealRepository.buildVisibilityFilter`) are applied before aggregation, preventing sensitive data leakage and IDOR vulnerabilities.
+  - **Thin Presentation Layer**: Keeping React as a pure presentation layer avoids duplicating complex financial logic (Decimal arithmetic, stage probabilities, and ISO week binning) in the browser.
+  - **Bounded Domain Scope**: The dashboard module does not own or mutate Deal data; it provides a high-performance, read-only analytics use case over existing CRM records.
+- **Architecture Flow**:
+  ```
+  Frontend Dashboard (React / TanStack Query)
+      ↓
+  GET /api/dashboard (Bearer Auth)
+      ↓
+  DashboardController (HTTP Handler)
+      ↓
+  DashboardService (Use Case Orchestration)
+      ↓
+  DashboardRepository (Prisma $transaction: groupBy, count, Decimal math)
+      ↓
+  PostgreSQL (Scoped Aggregations over Deal table)
+  ```
+- **Trade-offs / Operational Invariants**:
+  - Existing resource endpoints (e.g. `GET /api/deals`) remain strictly responsible for list/filter/pagination and CRUD operations.
+  - `/api/dashboard` is strictly responsible for derived pipeline summary metrics, stage/owner distributions, and the 8-week win trend.
+

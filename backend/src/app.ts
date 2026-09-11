@@ -5,6 +5,7 @@ import { errorHandler } from './middleware/error.middleware';
 import { authRouter } from './modules/auth/auth.routes';
 import { companyRouter } from './modules/companies/company.routes';
 import { dealRouter } from './modules/deals/deal.routes';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -40,6 +41,7 @@ export function createApp(): Application {
   app.use('/api/auth', authRouter);
   app.use('/api/companies', companyRouter);
   app.use('/api/deals', dealRouter);
+  app.use('/api/dashboard', dashboardRouter);
 
   // Global Error Handler
   app.use(errorHandler);

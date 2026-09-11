@@ -146,7 +146,7 @@ export class DealRepository {
    * - Manager: Full team visibility.
    * - Sales Rep: Deals where they are Owner OR Collaborator.
    */
-  private buildVisibilityFilter(
+  public buildVisibilityFilter(
     user: AuthUser,
     isTrash = false
   ): Prisma.DealWhereInput {
