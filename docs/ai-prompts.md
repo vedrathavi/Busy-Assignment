@@ -678,8 +678,39 @@ Each significant entry records:
 - **Corrections or rejected suggestions**: None.
 - **Final outcome**: Phase 9 is 100% completed, tested, audited, and ready for commit.
 
+---
 
+## 2026-09-11 - Prompt 15 - Phase 10: Notification Foundation & Overdue Deal Alerts
 
-
-
-
+- **Problem / Task**: Implement a polymorphic notification foundation and overdue deal alert system (`Notification` domain model with `DEAL_OVERDUE` discriminator, composed with specialized `DealAlert` model) with pure read-oriented GET endpoints, atomic idempotent dismissal, dynamic date evaluation, and role-based visibility.
+- **User Intent**:
+  - Model `Notification` (`id`, `userId`, `type: NotificationType.DEAL_OVERDUE`, `readAt`, `createdAt`, `updatedAt`) as generic notification identity/read state.
+  - Model `DealAlert` (`id`, `notificationId @unique`, `dealId @unique`, `dismissedCloseDate`, `dismissedAt`, timestamps) as deal-specific overdue/dismissal state.
+  - Use composition and relations with `NotificationType` discriminator; avoid inheritance-heavy OOP.
+  - Keep `DealAlert.dealId @unique` for the current single-alert-type scope without over-engineering polymorphic DB relations.
+  - `GET /api/alerts` must remain purely read-oriented (zero database writes on GET, zero notification spam, dynamic evaluation against `expectedCloseDate < todayUtc`).
+  - Idempotent alert dismissal (`POST /api/alerts/:dealId/dismiss`) using atomic Prisma `$transaction`.
+  - Notification recipient is the deal owner. Managers have team-wide visibility through authorization, but are not automatic notification recipients. Non-owner collaborators cannot dismiss unless they are also the owner (rejected with 403 Forbidden).
+  - Timezone-safe date comparisons using PostgreSQL DATE semantics (`@db.Date` and UTC calendar dates).
+  - Dynamic alert re-triggering: changing `expectedCloseDate` allows the deal alert to reappear naturally when `deal.expectedCloseDate !== dealAlert.dismissedCloseDate`.
+- **Prompt given to ChatGPT**:
+  > *"Plan is approved with one architectural adjustment: 1. Keep DealAlert.dealId @unique. 2. Prefer GET /api/alerts to remain read-oriented without blind INSERTs. 3. Preserve Notification vs DealAlert distinction. 4. Composition over inheritance with NotificationType discriminator. 5. Recipient = deal owner; Manager gets team visibility; Collaborators cannot dismiss. 6. PostgreSQL DATE semantics. 7. Update documentation."*
+- **Important ChatGPT recommendation**:
+  - Implemented dynamic evaluation in `AlertRepository.getOverdueAlerts()` filtering visible open deals where `expectedCloseDate < todayUtc` and dismissal date does not match `expectedCloseDate`.
+  - Idempotently materialized `Notification` and `DealAlert` in a single `$transaction` upon alert dismissal.
+  - Provided `GET /api/alerts/count` with `count` and `unreadCount` mirroring `GET /api/alerts`.
+- **Actual prompt sent to IDE / Code Assistant**:
+  > Implement Phase 10: `schema.prisma`, migration `20260911141000_add_notification_foundation`, `seed.ts`, `alert.types.ts`, `alert.repository.ts`, `alert.service.ts`, `alert.controller.ts`, `alert.routes.ts`, mount `/api/alerts` in `app.ts`, and create `alerts.test.ts` with 22 comprehensive integration tests.
+- **What IDE / Code Assistant implemented**:
+  - `backend/prisma/schema.prisma`: Added `NotificationType` enum, `Notification` model, updated `DealAlert` with `notificationId @unique`, and configured relations on `User` and `Deal`.
+  - `backend/prisma/migrations/20260911141000_add_notification_foundation/migration.sql`: Generated and applied migration to Supabase PostgreSQL database.
+  - `backend/prisma/seed.ts`: Updated seed script to create `Notification` and `DealAlert` for Deal 15.
+  - `backend/src/modules/alerts/`: Implemented `alert.types.ts`, `alert.repository.ts`, `alert.service.ts`, `alert.controller.ts`, and `alert.routes.ts`.
+  - `backend/src/app.ts`: Mounted `/api/alerts` with `authenticateToken`.
+  - `backend/src/__tests__/alerts.test.ts`: Created 22 comprehensive integration tests covering data model composition, unique constraints, dynamic derivation, role scoping, badge count, dismissal permissions, idempotent transactions, and date change re-triggering.
+- **Human review / testing**:
+  - `npx tsc --noEmit`: Clean compilation with 0 TypeScript errors.
+  - Vitest suite `alerts.test.ts`: 22 / 22 tests passed (100%).
+  - Full test suite: 198 tests passed.
+- **Corrections or rejected suggestions**: None.
+- **Final outcome**: Phase 10 is 100% completed, tested, audited, and ready for commit.

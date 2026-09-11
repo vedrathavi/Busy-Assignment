@@ -1,4 +1,4 @@
-import { AuthUser } from '../../types/express';
+import { AuthUser } from '../auth/auth.types';
 import { dashboardRepository } from './dashboard.repository';
 import { DashboardData } from './dashboard.types';
 

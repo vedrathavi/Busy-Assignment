@@ -41,6 +41,10 @@ enum HistoryType {
   DELETED
 }
 
+enum NotificationType {
+  DEAL_OVERDUE
+}
+
 // --------------------------------------------------
 // Core Models
 // --------------------------------------------------
@@ -90,6 +94,7 @@ model User {
   historyOldOwner     DealHistory[]      @relation("HistoryOldOwner")
   historyNewOwner     DealHistory[]      @relation("HistoryNewOwner")
   historyCollaborator DealHistory[]      @relation("HistoryCollaborator")
+  notifications       Notification[]     @relation("UserNotifications")
 }
 
 model Company {
@@ -180,10 +185,30 @@ model DealHistory {
   @@index([dealId, createdAt(sort: Desc)])
 }
 
-model DealAlert {
-  dealId             String   @id @db.Uuid
-  dismissedCloseDate DateTime @db.Date
-  dismissedAt        DateTime @default(now())
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
-  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  dealAlert DealAlert?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, readAt])
+}
+
+model DealAlert {
+  id                 String    @id @default(uuid()) @db.Uuid
+  notificationId     String    @unique @db.Uuid
+  dealId             String    @unique @db.Uuid
+  dismissedCloseDate DateTime? @db.Date
+  dismissedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  deal         Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
 }

@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DealStage, HistoryType } from '@prisma/client';
+import { PrismaClient, UserRole, DealStage, HistoryType, NotificationType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -823,18 +823,37 @@ async function main() {
   }
 
   // --------------------------------------------------------------------------
-  // 7. Deal Alerts
-  // Deal 14 is overdue with NO dismissal record (appears in alerts)
+  // 7. Deal Alerts & Notifications
+  // Deal 14 is overdue with NO dismissal record (appears dynamically in alerts)
   // Deal 15 is overdue WITH dismissal record (dismissed for current close date)
   // --------------------------------------------------------------------------
-  console.log('⏰ Seeding Deal Alerts...');
+  console.log('⏰ Seeding Deal Alerts & Notifications...');
+  const notif15 = await prisma.notification.upsert({
+    where: { id: '50000000-0000-4000-8000-000000000001' },
+    update: {
+      userId: USER_REP1_ID,
+      type: NotificationType.DEAL_OVERDUE,
+      readAt: null,
+    },
+    create: {
+      id: '50000000-0000-4000-8000-000000000001',
+      userId: USER_REP1_ID,
+      type: NotificationType.DEAL_OVERDUE,
+      readAt: null,
+      createdAt: new Date('2026-09-06T09:00:00.000Z'),
+    },
+  });
+
   await prisma.dealAlert.upsert({
     where: { dealId: DEALS.d15_overdueDism },
     update: {
+      notificationId: notif15.id,
       dismissedCloseDate: new Date('2026-09-05'),
       dismissedAt: new Date('2026-09-06T09:00:00.000Z'),
     },
     create: {
+      id: '60000000-0000-4000-8000-000000000001',
+      notificationId: notif15.id,
       dealId: DEALS.d15_overdueDism,
       dismissedCloseDate: new Date('2026-09-05'),
       dismissedAt: new Date('2026-09-06T09:00:00.000Z'),

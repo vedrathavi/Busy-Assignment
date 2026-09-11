@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma';
-import { AuthUser } from '../../types/express';
+import { AuthUser } from '../auth/auth.types';
 import { dealRepository } from '../deals/deal.repository';
 import { STAGE_PROBABILITY } from '../deals/deal.types';
 import { DealStage } from '@prisma/client';

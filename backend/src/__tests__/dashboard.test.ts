@@ -62,6 +62,31 @@ describe('Phase 9: Dashboard Pipeline Metrics & Analytics Integration Tests', { 
       prisma.deal.deleteMany({
         where: { id: { notIn: ALL_SEEDED_DEAL_IDS } },
       }),
+      // Restore closedAt / stages for seed deals in case earlier test suites modified them
+      prisma.deal.update({
+        where: { id: DEALS.d5 },
+        data: { stage: DealStage.WON, closedAt: new Date('2026-08-20T16:00:00.000Z'), deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d11 },
+        data: { stage: DealStage.WON, closedAt: new Date('2026-08-30T10:00:00.000Z'), deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d6 },
+        data: { stage: DealStage.LOST, closedAt: new Date('2026-07-15T11:30:00.000Z'), deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d12 },
+        data: { stage: DealStage.LOST, closedAt: new Date('2026-08-05T14:00:00.000Z'), deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d18_softDeleted },
+        data: { stage: DealStage.NEW, closedAt: null, deletedAt: new Date('2026-09-08T10:00:00.000Z') },
+      }),
+      prisma.deal.updateMany({
+        where: { id: { in: [DEALS.d1, DEALS.d2, DEALS.d3, DEALS.d4, DEALS.d7, DEALS.d8, DEALS.d9, DEALS.d10, DEALS.d13, DEALS.d14, DEALS.d15, DEALS.d16, DEALS.d17] } },
+        data: { closedAt: null, deletedAt: null },
+      }),
     ]);
   };
 

@@ -244,3 +244,76 @@ This document records the major architectural, domain, and technology decisions 
   - Existing resource endpoints (e.g. `GET /api/deals`) remain strictly responsible for list/filter/pagination and CRUD operations.
   - `/api/dashboard` is strictly responsible for derived pipeline summary metrics, stage/owner distributions, and the 8-week win trend.
 
+---
+
+## Decision 16: Generic Notification + Specialized DealAlert Composition Architecture
+
+- **Context / Problem**: Designing a notification domain model that supports overdue deal alerts today (`DEAL_OVERDUE`) while establishing a clean foundation for future notification types (e.g. assignment notifications, mention notifications) without over-engineering inheritance hierarchies or overly complex polymorphic relations.
+- **Chose**: A two-layer relational composition model:
+  1. A generic `Notification` entity (`id`, `userId`, `type: NotificationType`, `readAt`, `createdAt`, `updatedAt`) managing notification identity, user assignment, and read/unread lifecycle.
+  2. A specialized `DealAlert` entity (`id`, `notificationId @unique`, `dealId @unique`, `dismissedCloseDate`, `dismissedAt`, timestamps) managing deal-specific overdue state and dismissal date tracking.
+- **Rejected**:
+  - Inheritance-heavy OOP models (`abstract class Notification` with subclasses) forcing complex Table-Per-Hierarchy (TPH) or Table-Per-Type (TPT) database patterns.
+  - Single-table monolithic alert models where `DealAlert` represents the entire notification concept without a generic parent.
+  - Over-engineered polymorphic database relations (generic target foreign keys) when only `DEAL_OVERDUE` is required for this scope.
+- **Why**:
+  - **Composition Over Inheritance**: Composition paired with the `NotificationType.DEAL_OVERDUE` discriminator cleanly separates generic notification behavior (user recipient, read timestamps) from deal-specific alert state (deal reference, dismissal date).
+  - **Simplicity & Extensibility**: Keeping `DealAlert.dealId @unique` provides a clean 1:1 relation between Deal, DealAlert, and Notification for the current scope while allowing future specialized models (e.g., `TaskNotification`, `MentionNotification`) to attach to `Notification` using the same discriminator pattern.
+  - **Notification Recipient vs. CRM Visibility**:
+    - The `Notification.userId` recipient is **always the Deal Owner**, who is personally responsible for the deal.
+    - Managers receive team-wide visibility through server-side authorization (`DealRepository.buildVisibilityFilter`), not by polluting the user notification table with duplicate rows.
+    - Sales Rep collaborators do not become notification recipients and cannot dismiss alerts unless they are also the deal owner.
+- **Trade-offs**: Requires a 1:1 join between `Notification` and `DealAlert` when querying materialized alerts.
+
+---
+
+## Decision 17: Dynamic Overdue Detection & Read-Oriented GET /api/alerts
+
+- **Context / Problem**: Determining how overdue deal alerts should be identified and served—whether by running background workers/cron jobs that periodically insert alert rows, or by evaluating overdue status dynamically on request.
+- **Chose**: **Dynamic on-the-fly overdue detection** with a purely read-oriented `GET /api/alerts` endpoint (zero database writes on GET). Alerts are materialized in `Notification` and `DealAlert` only upon explicit user dismissal (`POST /api/alerts/:dealId/dismiss`).
+- **Rejected**:
+  - Background cron jobs or worker queues (e.g., BullMQ, node-cron, Celery) running scheduled tasks to detect and insert overdue alert rows.
+  - "Read-time mutation" patterns where `GET /api/alerts` executes INSERT/UPSERT statements during GET queries.
+  - Polling mechanisms that spam database write locks.
+- **Why**:
+  - **No Background Workers**: A sales CRM take-home application does not require asynchronous worker daemons or background Redis queues. PostgreSQL can compute `expectedCloseDate < CURRENT_DATE` in microseconds during normal read queries.
+  - **Pure Read Semantics**: `GET /api/alerts` remains an idempotent, side-effect-free read operation. Repeated GET requests never create duplicate rows, lock tables, or trigger notification spam.
+  - **Accurate Calendar-Day Semantics**: Evaluates `expectedCloseDate < todayUtc` using PostgreSQL `@db.Date` calendar dates, eliminating timezone drift bugs.
+  - **Dynamic Alert Re-triggering**: A deal alert reappears naturally if the deal's `expectedCloseDate` is updated to a new overdue date because `deal.expectedCloseDate !== dealAlert.dismissedCloseDate`.
+- **Trade-offs**: Requires filtering dismissed deals dynamically against visible open deals during `GET /api/alerts`.
+
+---
+
+## Decision 18: Separation of Notification Read State (`readAt`) vs. Alert Dismissal (`dismissedCloseDate`)
+
+- **Context / Problem**: Modeling the distinction between marking a notification as "read/viewed" in a notification tray versus "dismissing" an overdue deal alert so it stops triggering until the deal close date changes.
+- **Chose**: Decoupling `Notification.readAt` from `DealAlert.dismissedCloseDate`:
+  - `Notification.readAt: DateTime?`: Records when the notification was acknowledged/read by the user.
+  - `DealAlert.dismissedCloseDate: Date?`: Records the exact calendar `expectedCloseDate` for which the overdue alert was dismissed.
+- **Rejected**: Overloading `readAt` to mean dismissed, or treating dismissal as a boolean flag.
+- **Why**:
+  - If dismissal were a simple boolean `isDismissed = true`, changing a deal's `expectedCloseDate` to a new date would keep the alert permanently silenced, breaking the requirement that alerts must re-trigger when close dates lapse again.
+  - Storing `dismissedCloseDate: Date` allows the system to compare `deal.expectedCloseDate === dealAlert.dismissedCloseDate`. If the sales rep modifies the expected close date to another date that subsequently becomes overdue, the alert immediately and automatically reappears!
+- **Trade-offs**: Requires storing both the notification read timestamp and the deal-specific dismissal date.
+
+---
+
+## Decision 19: Owner Reassignment Notification Synchronization & Migration Safety
+
+- **Context / Problem**:
+  1. When deal ownership is reassigned from Sales Rep A to Sales Rep B, any existing persistent `DealAlert` and `Notification` would have a stale `Notification.userId = Rep A`.
+  2. The schema migration must safely handle existing `DealAlert` data without destructive data loss.
+  3. Redundant index cleanup on `DealAlert.dealId`.
+- **Chose**:
+  1. **Atomic Recipient Synchronization on Owner Reassignment**: Inside the deal update transaction (`updateWithHistory` and `reassignSingleDealWithHistory`), when `newOwnerId !== oldOwnerId`, any existing `DealAlert` for that deal has its linked `Notification.userId` atomically updated to `newOwnerId`.
+  2. **Non-Destructive Safe Migration**: The PostgreSQL migration checks if legacy `DealAlert` records exist and transforms them into `Notification` + `DealAlert` pairs without dropping existing data.
+  3. **Schema Index Cleanup**: Removed redundant `@@index([dealId])` on `DealAlert` because `dealId String @unique` already provides the necessary B-tree index in PostgreSQL.
+- **Rejected**:
+  1. Asynchronous event queues or background workers for syncing notification recipients.
+  2. Silently dropping tables during migrations.
+  3. Leaving stale `Notification.userId` pointing to the previous owner after reassignment.
+- **Why**:
+  - **Single Source of Truth**: Guarantees that `Notification.userId` always represents the current deal owner.
+  - **Immutable History Preserved**: `DealHistory` continues to record the `OWNER_CHANGED` audit log cleanly while the live alert recipient is updated in the same transaction.
+  - **Zero Background Complexity**: All updates occur synchronously and atomically within Prisma transactions.
+- **Trade-offs**: An extra indexed lookup during deal reassignment to check if a `DealAlert` exists for the deal.

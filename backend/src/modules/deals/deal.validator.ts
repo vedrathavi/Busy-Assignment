@@ -58,41 +58,35 @@ export const transitionStageSchema = z.object({
 
 export const dealQuerySchema = z
   .object({
-    stage: z
-      .nativeEnum(DealStage, {
-        errorMap: () => ({ message: 'Invalid deal stage' }),
-      })
-      .optional(),
+    stage: z.nativeEnum(DealStage).optional(),
     ownerId: z.string().uuid('Invalid owner ID format').optional(),
     companyId: z.string().uuid('Invalid company ID format').optional(),
     search: z.string().trim().optional(),
     page: z.coerce
-      .number({ invalid_type_error: 'Page must be a number' })
+      .number()
       .int('Page must be an integer')
       .min(1, 'Page must be at least 1')
       .default(1),
     pageSize: z.coerce
-      .number({ invalid_type_error: 'Page size must be a number' })
+      .number()
       .int('Page size must be an integer')
       .min(1, 'Page size must be at least 1')
       .max(100, 'Page size cannot exceed 100')
       .optional(),
     limit: z.coerce
-      .number({ invalid_type_error: 'Limit must be a number' })
+      .number()
       .int('Limit must be an integer')
       .min(1, 'Limit must be at least 1')
       .max(100, 'Limit cannot exceed 100')
       .optional(),
     sortBy: z
       .enum(['value', 'expectedCloseDate', 'updatedAt'], {
-        errorMap: () => ({
-          message: 'Invalid sortBy field. Supported fields: value, expectedCloseDate, updatedAt',
-        }),
+        message: 'Invalid sortBy field. Supported fields: value, expectedCloseDate, updatedAt',
       })
       .default('updatedAt'),
     sortOrder: z
       .enum(['asc', 'desc'], {
-        errorMap: () => ({ message: 'Invalid sortOrder. Supported values: asc, desc' }),
+        message: 'Invalid sortOrder. Supported values: asc, desc',
       })
       .default('desc'),
   })

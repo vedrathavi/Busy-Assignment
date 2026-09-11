@@ -398,7 +398,7 @@ export class DealRepository {
         select: dealSelect,
       });
 
-      // If owner changed, record OWNER_CHANGED in immutable history
+      // If owner changed, record OWNER_CHANGED in immutable history and sync notification recipient
       if (data.ownerId && oldOwnerId && data.ownerId !== oldOwnerId) {
         await tx.dealHistory.create({
           data: {
@@ -409,6 +409,18 @@ export class DealRepository {
             newOwnerId: data.ownerId,
           },
         });
+
+        // Keep notification recipient aligned with new deal owner
+        const existingAlert = await tx.dealAlert.findUnique({
+          where: { dealId: id },
+          select: { notificationId: true },
+        });
+        if (existingAlert) {
+          await tx.notification.update({
+            where: { id: existingAlert.notificationId },
+            data: { userId: data.ownerId },
+          });
+        }
       }
 
       return mapDealToResponse(updatedDeal);
@@ -648,6 +660,18 @@ export class DealRepository {
           newOwnerId,
         },
       });
+
+      // Keep notification recipient aligned with new deal owner
+      const existingAlert = await tx.dealAlert.findUnique({
+        where: { dealId },
+        select: { notificationId: true },
+      });
+      if (existingAlert) {
+        await tx.notification.update({
+          where: { id: existingAlert.notificationId },
+          data: { userId: newOwnerId },
+        });
+      }
 
       return mapDealToResponse(updatedDeal);
     });

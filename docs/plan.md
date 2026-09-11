@@ -165,12 +165,17 @@ graph TD
 - [x] Comprehensive automated Vitest integration suite (12 test scenarios covering scoping, IDOR immunity, Decimal calculations, stage/owner distributions, 8-week trend, and half-open month/week boundaries).
 - *Status*: **COMPLETED**
 
-### Phase 10: Overdue Deal Alerts
-- [ ] Overdue deals detection query (`GET /api/alerts`) — excludes soft-deleted deals.
-- [ ] Overdue alert badge count endpoint (`GET /api/alerts/count`).
-- [ ] Dismiss alert endpoint (`POST /api/alerts/:dealId/dismiss`) — deal owner only.
-- [ ] Verify re-triggering logic: alert returns if expectedCloseDate changes and lapses again.
-- *Status*: **PENDING**
+### Phase 10: Notification Foundation & Overdue Deal Alerts
+- [x] Polymorphic foundation with generic `Notification` domain model (`id`, `userId`, `type: DEAL_OVERDUE`, `readAt`, timestamps) composed with specialized `DealAlert` (`id`, `notificationId @unique`, `dealId @unique`, `dismissedCloseDate`, `dismissedAt`).
+- [x] Dynamic overdue alert derivation (`GET /api/alerts`) with zero database mutations on GET (purely read-oriented).
+- [x] Overdue alert badge count endpoint (`GET /api/alerts/count`) returning total and unread alert counts.
+- [x] Overdue alert dismissal endpoint (`POST /api/alerts/:dealId/dismiss`) with atomic idempotent `$transaction` persistence.
+- [x] Strict authorization: Manager can dismiss any team deal alert; Deal Owner can dismiss their own deal alert; non-owner collaborators rejected with 403 Forbidden.
+- [x] Calendar-accurate date boundary comparisons using PostgreSQL DATE semantics (`expectedCloseDate < todayUtc`).
+- [x] Excluded soft-deleted, WON, and LOST deals from overdue alerts.
+- [x] Dynamic alert re-triggering: changing `expectedCloseDate` allows the deal alert to reappear naturally when `deal.expectedCloseDate !== dealAlert.dismissedCloseDate`.
+- [x] Comprehensive automated Vitest integration suite (22 test scenarios covering data model composition, unique constraints, dynamic derivation, role scoping, badge count, dismissal permissions, idempotent transactions, and date change re-triggering).
+- *Status*: **COMPLETED**
 
 ### Phase 11: Frontend UI/UX Integration
 - [ ] Responsive navigation bar with role badge, alerts counter, and user profile.
