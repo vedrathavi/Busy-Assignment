@@ -142,6 +142,19 @@ graph TD
 - [x] Comprehensive automated Vitest integration suite (16 test scenarios covering bulk reassign, bulk advance, partial success, duplicate rejection, permissions, and CSV export).
 - *Status*: **COMPLETED**
 
+### Phase 8: Deal Search, Filtering, Sorting & Server-Side Pagination
+- [x] Database-level search across deal title and company name (`ILIKE` / Prisma `mode: 'insensitive'`).
+- [x] Filter capabilities for `companyId` (exact UUID), `stage` (exact `DealStage`), and `ownerId` (exact UUID) with `AND` semantics.
+- [x] Strict validation for filters (400 on invalid UUIDs or invalid stage enums).
+- [x] Sorting support for `value`, `expectedCloseDate`, and `updatedAt` (ASC / DESC) with deterministic tie-breaker (`id: 'asc'`).
+- [x] Rejection of unsupported `sortBy` and `sortOrder` values with 400 Bad Request.
+- [x] Server-side pagination with `page` (default: 1) and `pageSize` (default: 20, max: 100).
+- [x] Exact pre-pagination `total` count and `totalPages` calculation (`Math.ceil(total / pageSize)`).
+- [x] Preserved server-side visibility scoping and IDOR protection (Reps cannot discover unassociated deals via search or filters).
+- [x] Preserved active closed deals (`WON`, `LOST`) in normal deal list; preserved exclusion of soft-deleted deals.
+- [x] Comprehensive automated Vitest integration suite (30 test scenarios covering search, filters, sorting, pagination, tie-breaking, IDOR protection, and response contracts).
+- *Status*: **COMPLETED**
+
 ### Phase 9: Dashboard Pipeline Metrics
 - [ ] Dashboard aggregation service (`GET /api/dashboard`) — excludes soft-deleted deals.
 - [ ] Headline metrics: Open deals count, total weighted pipeline, won this month, lost this month.

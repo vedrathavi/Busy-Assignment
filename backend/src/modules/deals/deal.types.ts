@@ -120,19 +120,23 @@ export interface DealListQuery {
   companyId?: string;
   search?: string;
   page: number;
+  pageSize: number;
   limit: number;
-  sortBy: 'title' | 'value' | 'expectedCloseDate' | 'stage' | 'createdAt' | 'updatedAt';
+  sortBy: 'value' | 'expectedCloseDate' | 'updatedAt';
   sortOrder: 'asc' | 'desc';
+}
+
+export interface DealListPagination {
+  total: number;
+  page: number;
+  pageSize: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface DealListResponse {
   deals: DealResponse[];
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
+  pagination: DealListPagination;
 }
 
 export type BulkOperationStatus = 'success' | 'failed';

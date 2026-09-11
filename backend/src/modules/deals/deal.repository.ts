@@ -280,30 +280,36 @@ export class DealRepository {
       AND: filterConditions,
     };
 
-    const skip = (query.page - 1) * query.limit;
-    const take = query.limit;
+    const skip = (query.page - 1) * query.pageSize;
+    const take = query.pageSize;
 
     const [deals, total] = await prisma.$transaction([
       prisma.deal.findMany({
         where,
         select: dealSelect,
-        orderBy: {
-          [query.sortBy]: query.sortOrder,
-        },
+        orderBy: [
+          {
+            [query.sortBy]: query.sortOrder,
+          },
+          {
+            id: 'asc',
+          },
+        ],
         skip,
         take,
       }),
       prisma.deal.count({ where }),
     ]);
 
-    const totalPages = Math.ceil(total / query.limit) || 1;
+    const totalPages = Math.ceil(total / query.pageSize);
 
     return {
       deals: deals.map(mapDealToResponse),
       pagination: {
         total,
         page: query.page,
-        limit: query.limit,
+        pageSize: query.pageSize,
+        limit: query.pageSize,
         totalPages,
       },
     };
@@ -331,30 +337,36 @@ export class DealRepository {
       AND: filterConditions,
     };
 
-    const skip = (query.page - 1) * query.limit;
-    const take = query.limit;
+    const skip = (query.page - 1) * query.pageSize;
+    const take = query.pageSize;
 
     const [deals, total] = await prisma.$transaction([
       prisma.deal.findMany({
         where,
         select: dealSelect,
-        orderBy: {
-          deletedAt: 'desc',
-        },
+        orderBy: [
+          {
+            deletedAt: 'desc',
+          },
+          {
+            id: 'asc',
+          },
+        ],
         skip,
         take,
       }),
       prisma.deal.count({ where }),
     ]);
 
-    const totalPages = Math.ceil(total / query.limit) || 1;
+    const totalPages = Math.ceil(total / query.pageSize);
 
     return {
       deals: deals.map(mapDealToResponse),
       pagination: {
         total,
         page: query.page,
-        limit: query.limit,
+        pageSize: query.pageSize,
+        limit: query.pageSize,
         totalPages,
       },
     };

@@ -33,6 +33,7 @@ Each significant entry records:
 | **Phase 6** (Prompt 10) | Collaboration & Immutable Deal History | Implement Collaborators management (`GET/POST /:id/collaborators`, `DELETE /:id/collaborators/:userId`), Notes (`POST /:id/notes`), Immutable Deal History (`GET /:id/history`), direct access, owner exclusion, soft-deleted history visibility, and 30 Vitest tests. |
 | **Phase 6 Audit** (Prompt 11) | Implementation Verification & Code Integrity Audit | Conduct rigorous 11-point verification audit reviewing git diffs against Phase 5 baseline, proving zero weakened assertions, strict authorization, IDOR protection, transactional history, and 118/118 passing tests without code modifications. |
 | **Phase 7** (Prompt 12) | Bulk Operations & Pipeline CSV Export | Implement Manager bulk reassign (`POST /api/deals/bulk/reassign`), Manager bulk advance (`POST /api/deals/bulk/advance`), Pipeline CSV export (`GET /api/deals/export`), partial success handling, existing transition policy reuse, previousStage preservation, and 16 Vitest tests. |
+| **Phase 8** (Prompt 13) | Deal Search, Filtering, Sorting & Pagination | Implement database-level search (`title` OR `company.name` case-insensitive), strict filters (`companyId`, `stage`, `ownerId`), deterministic sorting (`value`, `expectedCloseDate`, `updatedAt` + `id`), server-side pagination (`page`, `pageSize`, `limit`), pre-pagination `total`, and 30 Vitest tests. |
 
 ---
 
@@ -607,6 +608,38 @@ Each significant entry records:
   - Preserved Phase 5 `previousStage` semantics by delegating bulk advance to existing `transitionStage()`.
   - Updated test fixture teardown to preserve all 18 seeded deals across concurrent/sequential test execution.
 - **Final outcome**: Phase 7 is 100% completed, fully tested, and ready for Phase 8.
+
+---
+
+## 2026-09-11 - Prompt 13 - Phase 8: Deal Search, Filtering, Sorting & Server-Side Pagination
+
+- **Problem / Task**: Implement robust database-level search, filtering, deterministic sorting, and server-side pagination for `GET /api/deals` while maintaining server-side scoped visibility, IDOR protection, and zero regressions.
+- **User Intent**:
+  - Search: case-insensitive partial match across deal `title` OR `company.name`.
+  - Filters: strict validation for `companyId` (UUID), `stage` (`DealStage`), and `ownerId` (UUID), combined with `AND` semantics (400 on invalid input).
+  - Sorting: restricted to `value`, `expectedCloseDate`, and `updatedAt` (ASC / DESC) with deterministic tie-breaker `id: 'asc'`. Rejection of unsupported sort fields with 400.
+  - Pagination: server-side `skip`/`take` with `page` (default 1), `pageSize` (default 20, max 100), and `limit` compatibility. Total pre-pagination count and `totalPages` calculation (`Math.ceil(total / pageSize)`).
+  - Scoped visibility: Managers see all team deals; Sales Reps see only owned & collaborated deals. Search and filters must operate at database level without in-memory leaking.
+  - Closed active deals (`WON`, `LOST`) remain visible; soft-deleted deals remain excluded.
+- **Prompt given to ChatGPT**:
+  > *"Plan approved. Minor adjustments: 1. Keep limit only if existing GET /api/deals uses it and backward compatibility requires it. 2. Calculate totalPages simply as Math.ceil(total / pageSize), giving 0 when total is 0. 3. Add a regression test ensuring existing GET /api/deals response fields are preserved while adding pagination. Implement Phase 8 now, run test suites, typecheck, inspect diff, and report audit verdict without committing."*
+- **Important ChatGPT recommendation**:
+  - Added dual pagination property support (`pageSize` and `limit`) in `dealQuerySchema` and `DealListPagination` for full backwards compatibility with existing Phase 5 tests.
+  - Combined `title` and `company.name` in Prisma `OR` condition with `mode: 'insensitive'` under the visibility-scoped `AND` array.
+  - Added deterministic tie-breaking `[{ [query.sortBy]: query.sortOrder }, { id: 'asc' }]` in Prisma `orderBy`.
+- **Actual prompt sent to IDE / Code Assistant**:
+  > Implement Phase 8: `deal.types.ts`, `deal.validator.ts`, `deal.repository.ts`, `deals-query.test.ts` with 30 comprehensive integration tests.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/deals/deal.types.ts`: Updated `DealListQuery` with `pageSize`, `limit`, and strict `sortBy` fields; defined `DealListPagination`.
+  - `backend/src/modules/deals/deal.validator.ts`: Added validation for `page`, `pageSize`, `limit`, `sortBy`, `sortOrder`, `stage`, `ownerId`, `companyId`, `search`.
+  - `backend/src/modules/deals/deal.repository.ts`: Updated `listVisible()` and `listTrash()` with database-level multi-condition filtering, deterministic tie-breaking, `skip`/`take`, and pre-pagination counting.
+  - `backend/src/__tests__/deals-query.test.ts`: Created 30 comprehensive Vitest integration tests covering all scenarios.
+- **Human review / testing**:
+  - `npx tsc --noEmit`: Clean compilation with 0 TypeScript errors.
+  - Complete backend test suite (`npm test`): 164 / 164 tests passed across all 7 test suites (100%).
+- **Corrections or rejected suggestions**: None.
+- **Final outcome**: Phase 8 is 100% completed, tested, audited, and ready for commit.
+
 
 
 
