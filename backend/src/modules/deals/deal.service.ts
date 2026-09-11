@@ -8,12 +8,17 @@ import { dealTransitionPolicy } from './deal.transition-policy';
 import {
   AddCollaboratorInput,
   AddNoteInput,
+  BulkAdvanceInput,
+  BulkOperationResponse,
+  BulkReassignInput,
+  BulkResultItem,
   CollaboratorResponse,
   CreateDealInput,
   DealHistoryResponse,
   DealListQuery,
   DealListResponse,
   DealResponse,
+  STAGE_PROBABILITY,
   TransitionStageInput,
   UpdateDealInput,
 } from './deal.types';
@@ -380,6 +385,239 @@ export class DealService {
     }
 
     return dealRepository.getDealHistory(dealId);
+  }
+
+  /**
+   * Bulk reassigns deals to a new Sales Rep owner within the manager's team.
+   * Only Managers can perform bulk reassignment.
+   * Partial success is returned; each deal is processed independently and atomically.
+   */
+  async bulkReassign(
+    user: AuthUser,
+    input: BulkReassignInput
+  ): Promise<BulkOperationResponse> {
+    if (user.role !== UserRole.MANAGER) {
+      throw new ForbiddenError('Only managers can perform bulk deal reassignment');
+    }
+
+    // Validate target owner: exists, same team, role SALES_REP
+    const targetOwner = await prisma.user.findFirst({
+      where: {
+        id: input.ownerId,
+        teamId: user.teamId,
+        organizationId: user.organizationId,
+      },
+    });
+
+    if (!targetOwner) {
+      throw new BadRequestError('Target owner does not exist or does not belong to your team');
+    }
+
+    if (targetOwner.role !== UserRole.SALES_REP) {
+      throw new BadRequestError('Deals can only be assigned to Sales Reps');
+    }
+
+    const results: BulkResultItem[] = [];
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const dealId of input.dealIds) {
+      const deal = await dealRepository.findByIdForTeam(dealId, user.teamId, true);
+
+      if (!deal) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'DEAL_NOT_FOUND',
+          message: 'Deal was not found.',
+        });
+        failed++;
+        continue;
+      }
+
+      if (deal.deletedAt !== null) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'DEAL_DELETED',
+          message: 'Cannot reassign a soft-deleted deal.',
+        });
+        failed++;
+        continue;
+      }
+
+      if (deal.ownerId === input.ownerId) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'ALREADY_ASSIGNED',
+          message: 'Deal is already assigned to this sales rep.',
+        });
+        failed++;
+        continue;
+      }
+
+      try {
+        await dealRepository.reassignSingleDealWithHistory(
+          deal.id,
+          input.ownerId,
+          deal.ownerId,
+          user.id
+        );
+        results.push({
+          dealId,
+          status: 'success',
+        });
+        succeeded++;
+      } catch (err: unknown) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'MUTATION_FAILED',
+          message: 'Failed to reassign deal.',
+        });
+        failed++;
+      }
+    }
+
+    return {
+      success: true,
+      results,
+      summary: {
+        requested: input.dealIds.length,
+        succeeded,
+        failed,
+      },
+    };
+  }
+
+  /**
+   * Bulk advances deals forward one lifecycle stage.
+   * Only Managers can perform bulk advance.
+   * Partial success is returned; each deal is processed independently and atomically.
+   * Respects pure DealTransitionPolicy (does not guess WON/LOST for NEGOTIATION).
+   */
+  async bulkAdvance(
+    user: AuthUser,
+    input: BulkAdvanceInput
+  ): Promise<BulkOperationResponse> {
+    if (user.role !== UserRole.MANAGER) {
+      throw new ForbiddenError('Only managers can perform bulk deal stage advancement');
+    }
+
+    const results: BulkResultItem[] = [];
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const dealId of input.dealIds) {
+      const deal = await dealRepository.findByIdForTeam(dealId, user.teamId, true);
+
+      if (!deal) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'DEAL_NOT_FOUND',
+          message: 'Deal was not found.',
+        });
+        failed++;
+        continue;
+      }
+
+      if (deal.deletedAt !== null) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'DEAL_DELETED',
+          message: 'Cannot advance a soft-deleted deal.',
+        });
+        failed++;
+        continue;
+      }
+
+      const advanceEval = dealTransitionPolicy.getBulkAdvanceTarget(deal.stage);
+      if (!advanceEval.canAdvance || !advanceEval.targetStage) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: advanceEval.reason || 'INVALID_TRANSITION',
+          message: advanceEval.message || 'Cannot advance deal stage.',
+        });
+        failed++;
+        continue;
+      }
+
+      const validation = dealTransitionPolicy.isTransitionLegal(deal.stage, advanceEval.targetStage);
+      if (!validation.legal) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'INVALID_TRANSITION',
+          message: validation.error || 'Illegal stage transition.',
+        });
+        failed++;
+        continue;
+      }
+
+      try {
+        await dealRepository.transitionStage(
+          deal.id,
+          deal.stage,
+          advanceEval.targetStage,
+          validation.isClosing ?? false,
+          undefined,
+          user.id
+        );
+        results.push({
+          dealId,
+          status: 'success',
+        });
+        succeeded++;
+      } catch (err: unknown) {
+        results.push({
+          dealId,
+          status: 'failed',
+          reason: 'MUTATION_FAILED',
+          message: 'Failed to advance deal stage.',
+        });
+        failed++;
+      }
+    }
+
+    return {
+      success: true,
+      results,
+      summary: {
+        requested: input.dealIds.length,
+        succeeded,
+        failed,
+      },
+    };
+  }
+
+  /**
+   * Generates a CSV export of all active open deals visible to the authenticated user.
+   * Format: Company,Stage,Value,Weighted Value
+   */
+  async exportOpenDealsCsv(user: AuthUser): Promise<string> {
+    const deals = await dealRepository.getOpenDealsForExport(user);
+
+    const escapeCsvField = (field: string): string => {
+      if (field.includes(',') || field.includes('"') || field.includes('\n') || field.includes('\r')) {
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    };
+
+    const header = 'Company,Stage,Value,Weighted Value';
+    const rows = deals.map((deal) => {
+      const company = escapeCsvField(deal.company.name);
+      const stage = deal.stage;
+      const value = deal.value.toFixed(2);
+      const weightedValue = deal.value.mul(STAGE_PROBABILITY[deal.stage]).toFixed(2);
+      return `${company},${stage},${value},${weightedValue}`;
+    });
+
+    return [header, ...rows].join('\r\n');
   }
 }
 

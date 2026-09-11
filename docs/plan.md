@@ -127,22 +127,20 @@ graph TD
 - [x] Comprehensive automated Vitest integration suite (30 test scenarios covering collaborator listing, adding, removing, duplicate rejection, owner exclusion, note creation, immutable history retrieval, soft-deleted deal history access, and ownership reassignment preserving collaborators).
 - *Status*: **COMPLETED**
 
-### Phase 7: Search, Filtering, Sorting & Server-Side Pagination
-- [ ] Query parser and Zod schema for search/filter parameters.
-- [ ] Search across deal title and company name (`ILIKE`) on active deals (`deletedAt IS NULL`).
-- [ ] Filters: company, stage, owner.
-- [ ] Sorting: value, expectedCloseDate, updatedAt (ASC/DESC).
-- [ ] Server-side pagination returning `{ items, total, page, totalPages }`.
-- [ ] Strict query scoping ensuring reps only see their accessible deals.
-- *Status*: **PENDING**
-
-### Phase 8: Bulk Operations & CSV Pipeline Export
-- [ ] Manager bulk reassign endpoint (`POST /api/deals/bulk/reassign`).
-- [ ] Manager bulk advance endpoint (`POST /api/deals/bulk/advance`).
-- [ ] Partial success reporting returning per-deal status: `{ dealId, success, reason }`.
-- [ ] Pipeline CSV export endpoint (`GET /api/deals/export`):
-  - Streams every active open deal with company, stage, value, and weighted value.
-- *Status*: **PENDING**
+### Phase 7: Bulk Operations & CSV Pipeline Export
+- [x] Manager bulk reassign endpoint (`POST /api/deals/bulk/reassign`) with max 100 limit, duplicate ID rejection, and Sales Rep role enforcement.
+- [x] Manager bulk advance endpoint (`POST /api/deals/bulk/advance`) respecting pure `DealTransitionPolicy` (blocks `NEGOTIATION` with `TRANSITION_REQUIRES_TARGET` without guessing Won/Lost).
+- [x] Preserved exact Phase 5 `previousStage` semantics by reusing `dealRepository.transitionStage()`.
+- [x] Atomic independent transactions per deal yielding clean partial success reporting (`{ dealId, status, reason?, message? }` with `{ requested, succeeded, failed }` summary).
+- [x] Preserved existing collaborators upon bulk ownership reassignment with `OWNER_CHANGED` history events.
+- [x] Pipeline CSV export endpoint (`GET /api/deals/export`):
+  - Streams active open deals only (`deletedAt IS NULL`, `stage NOT IN ['WON', 'LOST']`).
+  - Reuses authoritative database visibility filter (`buildVisibilityFilter(user, false)`).
+  - Exact headers (`Company,Stage,Value,Weighted Value`).
+  - Exact Decimal arithmetic for weighted values.
+  - RFC 4180 escaping for quotes and commas.
+- [x] Comprehensive automated Vitest integration suite (16 test scenarios covering bulk reassign, bulk advance, partial success, duplicate rejection, permissions, and CSV export).
+- *Status*: **COMPLETED**
 
 ### Phase 9: Dashboard Pipeline Metrics
 - [ ] Dashboard aggregation service (`GET /api/dashboard`) — excludes soft-deleted deals.

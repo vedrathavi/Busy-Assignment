@@ -134,6 +134,51 @@ export class DealTransitionPolicy {
       targetStage: previousStage,
     };
   }
+
+  /**
+   * Pure evaluation of bulk advance target for a given current stage.
+   * - NEW -> QUALIFIED
+   * - QUALIFIED -> PROPOSAL
+   * - PROPOSAL -> NEGOTIATION
+   * - NEGOTIATION -> requires explicit target stage (WON or LOST); bulk advance does not guess.
+   * - WON / LOST -> closed deals cannot be transitioned.
+   */
+  getBulkAdvanceTarget(currentStage: DealStage): {
+    canAdvance: boolean;
+    targetStage?: DealStage;
+    reason?: string;
+    message?: string;
+  } {
+    if (currentStage === DealStage.WON || currentStage === DealStage.LOST) {
+      return {
+        canAdvance: false,
+        reason: 'DEAL_CLOSED',
+        message: 'Closed deals cannot be transitioned.',
+      };
+    }
+
+    if (currentStage === DealStage.NEGOTIATION) {
+      return {
+        canAdvance: false,
+        reason: 'TRANSITION_REQUIRES_TARGET',
+        message: 'Advancing from NEGOTIATION requires an explicit target stage (WON or LOST).',
+      };
+    }
+
+    const forwardTarget = DealTransitionPolicy.FORWARD_MAP[currentStage];
+    if (forwardTarget && typeof forwardTarget === 'string') {
+      return {
+        canAdvance: true,
+        targetStage: forwardTarget as DealStage,
+      };
+    }
+
+    return {
+      canAdvance: false,
+      reason: 'INVALID_TRANSITION',
+      message: `No forward advance available from stage '${currentStage}'.`,
+    };
+  }
 }
 
 export const dealTransitionPolicy = new DealTransitionPolicy();

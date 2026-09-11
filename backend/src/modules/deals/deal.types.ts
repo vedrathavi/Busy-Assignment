@@ -134,3 +134,40 @@ export interface DealListResponse {
     totalPages: number;
   };
 }
+
+export type BulkOperationStatus = 'success' | 'failed';
+
+export interface BulkResultItem {
+  dealId: string;
+  status: BulkOperationStatus;
+  reason?: string;
+  message?: string;
+}
+
+export interface BulkSummary {
+  requested: number;
+  succeeded: number;
+  failed: number;
+}
+
+export interface BulkOperationResponse {
+  success: boolean;
+  results: BulkResultItem[];
+  summary: BulkSummary;
+}
+
+export interface BulkReassignInput {
+  dealIds: string[];
+  ownerId: string;
+}
+
+export interface BulkAdvanceInput {
+  dealIds: string[];
+}
+
+export interface OpenDealExportRecord {
+  companyName: string;
+  stage: DealStage;
+  value: string;
+  weightedValue: string;
+}

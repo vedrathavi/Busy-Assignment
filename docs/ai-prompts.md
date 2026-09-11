@@ -32,6 +32,7 @@ Each significant entry records:
 | **Phase 5** (Prompt 09) | Deals & Lifecycle State Machine | Implement Deals CRUD, Trash view, exact Decimal calculations, pure `DealTransitionPolicy` (1-step forward, 1-step backward with reason, closed deal protection, Manager reopen), collaborator mutation permissions, soft deletion, and 41 Vitest tests. |
 | **Phase 6** (Prompt 10) | Collaboration & Immutable Deal History | Implement Collaborators management (`GET/POST /:id/collaborators`, `DELETE /:id/collaborators/:userId`), Notes (`POST /:id/notes`), Immutable Deal History (`GET /:id/history`), direct access, owner exclusion, soft-deleted history visibility, and 30 Vitest tests. |
 | **Phase 6 Audit** (Prompt 11) | Implementation Verification & Code Integrity Audit | Conduct rigorous 11-point verification audit reviewing git diffs against Phase 5 baseline, proving zero weakened assertions, strict authorization, IDOR protection, transactional history, and 118/118 passing tests without code modifications. |
+| **Phase 7** (Prompt 12) | Bulk Operations & Pipeline CSV Export | Implement Manager bulk reassign (`POST /api/deals/bulk/reassign`), Manager bulk advance (`POST /api/deals/bulk/advance`), Pipeline CSV export (`GET /api/deals/export`), partial success handling, existing transition policy reuse, previousStage preservation, and 16 Vitest tests. |
 
 ---
 
@@ -563,6 +564,50 @@ Each significant entry records:
   - Confirmed test isolation was achieved without weakening any business rule or test assertion.
 - **Corrections or rejected suggestions**: None.
 - **Final outcome**: Comprehensive verification audit completed and documented; all Phase 6 invariants, test suites, and documentation fully verified.
+
+---
+
+## 2026-09-11 - Prompt 12 - Phase 7: Bulk Operations & Pipeline CSV Export
+
+- **Problem / Task**: Implement strictly-bounded Phase 7 functionality: Manager Bulk Reassignment (`POST /api/deals/bulk/reassign`), Manager Bulk Advance (`POST /api/deals/bulk/advance`), and Pipeline CSV Export (`GET /api/deals/export`).
+- **User Intent**:
+  - Enforce strict scope boundaries: zero dashboard, zero alerts/notifications, zero frontend creep, zero pagination/search rewrites, zero new schema migrations.
+  - Implement partial success reporting for bulk operations (independent atomic transactions per deal; failure of one deal does not fail the batch).
+  - Bulk operations capped at 100 deal IDs maximum, rejecting duplicate deal IDs with `400 Bad Request`.
+  - Bulk mutations restricted to Managers (`403 Forbidden` for Sales Reps).
+  - Bulk advance must respect `DealTransitionPolicy` without guessing Won/Lost for `NEGOTIATION` deals (`TRANSITION_REQUIRES_TARGET`).
+  - **Preserve exact Phase 5 `previousStage` semantics**: `previousStage` must only be set during closing moves via the existing `transitionStage` repository method, avoiding any synthetic bulk-specific conventions.
+  - Pipeline CSV export must reuse authoritative database visibility rules (`buildVisibilityFilter(user, false)`), stream only active open deals (`deletedAt IS NULL`, `stage NOT IN ['WON', 'LOST']`), calculate weighted values using exact `Decimal` arithmetic, and format RFC 4180 compliant CSV output.
+- **Prompt given to ChatGPT**:
+  > *"I reviewed the Phase 7 implementation plan. It is well-bounded and consistent with the architecture through Phase 6. One correction: advanceSingleDealWithHistory shouldn't blindly set previousStage for every advance. Preserve existing previousStage semantics exactly from Phase 5 (only on closing moves). Bulk advance is a batching mechanism, not a second state machine. Ensure CSV visibility reuses existing deal visibility filters to prevent IDOR leaks. Don't commit immediately; present implementation report first."*
+- **Important ChatGPT recommendation**:
+  - Reused `dealTransitionPolicy.getBulkAdvanceTarget(stage)` as a pure evaluator and delegated execution directly to `dealRepository.transitionStage()`.
+  - Reused `dealRepository.buildVisibilityFilter(user, false)` in `getOpenDealsForExport()` to guarantee zero visibility discrepancy or IDOR leakage between deal listing and CSV export.
+  - Formatted CSV using explicit RFC 4180 escaping (double-quote wrapping and escaping for fields containing quotes, commas, or newlines).
+  - Implemented partial success item format `{ dealId, status, reason?, message? }` alongside `{ requested, succeeded, failed }` summary.
+- **Actual prompt sent to IDE / Code Assistant**:
+  > Strict Phase 7 prompt specifying:
+  > 1. Exact Zod schemas: `bulkReassignSchema` and `bulkAdvanceSchema` (max 100, non-empty, duplicate rejection).
+  > 2. `POST /api/deals/bulk/reassign`: Manager-only, target user validation (`role === 'SALES_REP'`), atomic `reassignSingleDealWithHistory` per deal, `OWNER_CHANGED` history, collaborator preservation.
+  > 3. `POST /api/deals/bulk/advance`: Manager-only, `DealTransitionPolicy` evaluation, `NEGOTIATION` rejected with `TRANSITION_REQUIRES_TARGET`, existing `transitionStage` reuse preserving `previousStage` semantics.
+  > 4. `GET /api/deals/export`: Header `Content-Type: text/csv`, `Content-Disposition: attachment; filename="deals.csv"`, columns `Company,Stage,Value,Weighted Value`, Decimal precision, active open deals only, repository visibility filter reuse.
+  > 5. 16 integration tests in `deals-bulk-export.test.ts`.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/deals/deal.types.ts`: Defined `BulkOperationStatus`, `BulkResultItem`, `BulkSummary`, `BulkOperationResponse`, `BulkReassignInput`, `BulkAdvanceInput`, and `OpenDealExportRecord`.
+  - `backend/src/modules/deals/deal.validator.ts`: Added `bulkReassignSchema` and `bulkAdvanceSchema` with `.refine()` validating unique UUID arrays up to 100 items.
+  - `backend/src/modules/deals/deal.transition-policy.ts`: Added `getBulkAdvanceTarget(currentStage)` evaluating 1-step linear advancement (`NEW -> QUALIFIED -> PROPOSAL -> NEGOTIATION`) and blocking `NEGOTIATION`, `WON`, `LOST`.
+  - `backend/src/modules/deals/deal.repository.ts`: Added `reassignSingleDealWithHistory()` (atomic transaction updating owner and appending `OWNER_CHANGED` history while keeping collaborators intact) and `getOpenDealsForExport()` (reusing `buildVisibilityFilter`).
+  - `backend/src/modules/deals/deal.service.ts`: Added `bulkReassign()`, `bulkAdvance()`, and `exportOpenDealsCsv()`.
+  - `backend/src/modules/deals/deal.controller.ts` & `deal.routes.ts`: Mounted `/bulk/reassign`, `/bulk/advance`, and `/export` prior to parameterized `/:id` routes.
+  - `backend/src/__tests__/deals-bulk-export.test.ts`: Created 16 comprehensive Vitest integration tests covering all bulk operations, role permissions, validations, partial success, duplicate rejection, and CSV exports.
+- **Human review / testing**:
+  - `npx tsc --noEmit`: Clean compilation with 0 TypeScript errors.
+  - Complete backend test suite (`npm test`): 134 / 134 tests passed across all 6 test suites (100%).
+- **Corrections or rejected suggestions**:
+  - Preserved Phase 5 `previousStage` semantics by delegating bulk advance to existing `transitionStage()`.
+  - Updated test fixture teardown to preserve all 18 seeded deals across concurrent/sequential test execution.
+- **Final outcome**: Phase 7 is 100% completed, fully tested, and ready for Phase 8.
+
 
 
 

@@ -90,6 +90,27 @@ export const addNoteSchema = z.object({
     .max(5000, 'Note content cannot exceed 5000 characters'),
 });
 
+export const bulkReassignSchema = z.object({
+  dealIds: z
+    .array(z.string().uuid('Each deal ID must be a valid UUID'))
+    .min(1, 'At least one deal ID is required')
+    .max(100, 'Maximum batch size is 100 deals')
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'Duplicate deal IDs are not allowed in the request',
+    }),
+  ownerId: z.string().uuid('Owner ID must be a valid UUID'),
+});
+
+export const bulkAdvanceSchema = z.object({
+  dealIds: z
+    .array(z.string().uuid('Each deal ID must be a valid UUID'))
+    .min(1, 'At least one deal ID is required')
+    .max(100, 'Maximum batch size is 100 deals')
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'Duplicate deal IDs are not allowed in the request',
+    }),
+});
+
 export type CreateDealSchemaType = z.infer<typeof createDealSchema>;
 export type UpdateDealSchemaType = z.infer<typeof updateDealSchema>;
 export type TransitionStageSchemaType = z.infer<typeof transitionStageSchema>;
@@ -97,3 +118,5 @@ export type DealQuerySchemaType = z.infer<typeof dealQuerySchema>;
 export type AddCollaboratorSchemaType = z.infer<typeof addCollaboratorSchema>;
 export type CollaboratorUserParamSchemaType = z.infer<typeof collaboratorUserParamSchema>;
 export type AddNoteSchemaType = z.infer<typeof addNoteSchema>;
+export type BulkReassignSchemaType = z.infer<typeof bulkReassignSchema>;
+export type BulkAdvanceSchemaType = z.infer<typeof bulkAdvanceSchema>;

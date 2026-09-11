@@ -609,6 +609,79 @@ export class DealRepository {
   }
 
   /**
+   * Atomically reassigns a single deal's owner and records an OWNER_CHANGED history event.
+   * Preserves all existing collaborators intact.
+   */
+  async reassignSingleDealWithHistory(
+    dealId: string,
+    newOwnerId: string,
+    oldOwnerId: string,
+    actorId: string
+  ): Promise<DealResponse> {
+    return prisma.$transaction(async (tx) => {
+      const updatedDeal = await tx.deal.update({
+        where: { id: dealId },
+        data: {
+          ownerId: newOwnerId,
+        },
+        select: dealSelect,
+      });
+
+      await tx.dealHistory.create({
+        data: {
+          dealId,
+          actorId,
+          type: HistoryType.OWNER_CHANGED,
+          oldOwnerId,
+          newOwnerId,
+        },
+      });
+
+      return mapDealToResponse(updatedDeal);
+    });
+  }
+
+  /**
+   * Retrieves all active open deals visible to the requesting user for CSV export.
+   * Reuses the authoritative repository visibility filter. Excludes soft-deleted and closed (WON/LOST) deals.
+   */
+  async getOpenDealsForExport(
+    user: AuthUser
+  ): Promise<Array<{ company: { name: string }; stage: DealStage; value: Prisma.Decimal }>> {
+    const visibilityFilter = this.buildVisibilityFilter(user, false);
+
+    return prisma.deal.findMany({
+      where: {
+        AND: [
+          visibilityFilter,
+          {
+            stage: {
+              in: [
+                DealStage.NEW,
+                DealStage.QUALIFIED,
+                DealStage.PROPOSAL,
+                DealStage.NEGOTIATION,
+              ],
+            },
+          },
+        ],
+      },
+      select: {
+        company: {
+          select: {
+            name: true,
+          },
+        },
+        stage: true,
+        value: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+  }
+
+  /**
    * Retrieves all immutable history events for a deal, ordered newest-first.
    */
   async getDealHistory(dealId: string): Promise<DealHistoryResponse[]> {

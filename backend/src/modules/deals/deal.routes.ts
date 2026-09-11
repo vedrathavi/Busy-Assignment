@@ -14,6 +14,13 @@ router.get('/', (req, res, next) => dealController.list(req, res, next));
 // Trash Listing (MUST be registered before /:id)
 router.get('/trash', (req, res, next) => dealController.listTrash(req, res, next));
 
+// Bulk Operations (MUST be registered before /:id)
+router.post('/bulk/reassign', (req, res, next) => dealController.bulkReassign(req, res, next));
+router.post('/bulk/advance', (req, res, next) => dealController.bulkAdvance(req, res, next));
+
+// Pipeline CSV Export (MUST be registered before /:id)
+router.get('/export', (req, res, next) => dealController.exportCsv(req, res, next));
+
 // Single Deal Operations
 router.get('/:id', (req, res, next) => dealController.getById(req, res, next));
 router.patch('/:id', (req, res, next) => dealController.update(req, res, next));

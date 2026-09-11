@@ -4,6 +4,8 @@ import { dealService } from './deal.service';
 import {
   addCollaboratorSchema,
   addNoteSchema,
+  bulkAdvanceSchema,
+  bulkReassignSchema,
   collaboratorUserParamSchema,
   createDealSchema,
   dealIdParamSchema,
@@ -261,6 +263,55 @@ export class DealController {
         success: true,
         data: history,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/deals/bulk/reassign
+   */
+  async bulkReassign(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const validatedBody = bulkReassignSchema.parse(req.body);
+      const result = await dealService.bulkReassign(req.user, validatedBody);
+
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/deals/bulk/advance
+   */
+  async bulkAdvance(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const validatedBody = bulkAdvanceSchema.parse(req.body);
+      const result = await dealService.bulkAdvance(req.user, validatedBody);
+
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/deals/export
+   */
+  async exportCsv(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const csvContent = await dealService.exportOpenDealsCsv(req.user);
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="deals.csv"');
+      res.status(200).send(csvContent);
     } catch (error) {
       next(error);
     }
