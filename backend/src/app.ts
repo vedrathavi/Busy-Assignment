@@ -4,6 +4,7 @@ import { env } from './config/env';
 import { errorHandler } from './middleware/error.middleware';
 import { authRouter } from './modules/auth/auth.routes';
 import { companyRouter } from './modules/companies/company.routes';
+import { dealRouter } from './modules/deals/deal.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -38,6 +39,7 @@ export function createApp(): Application {
   // Feature Modules
   app.use('/api/auth', authRouter);
   app.use('/api/companies', companyRouter);
+  app.use('/api/deals', dealRouter);
 
   // Global Error Handler
   app.use(errorHandler);

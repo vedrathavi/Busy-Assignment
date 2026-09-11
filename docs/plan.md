@@ -86,24 +86,26 @@ graph TD
 - *Status*: **COMPLETED**
 
 ### Phase 5: Deals & Lifecycle State Machine
-- [ ] Deal CRUD endpoints:
-  - Create deal (`POST /api/deals`).
-  - List active deals (`GET /api/deals`) — filtered by `deletedAt IS NULL`.
-  - List deleted deals / Trash (`GET /api/deals/trash`) — filtered by `deletedAt IS NOT NULL` with role scoping.
-  - View deal details (`GET /api/deals/:id`).
-  - Edit deal details (`PATCH /api/deals/:id`) — blocked if deal is deleted.
+- [x] Deal CRUD endpoints:
+  - Create deal (`POST /api/deals`): exact `Decimal(14,2)` money handling, `YYYY-MM-DD` calendar date, blocked on archived companies, reps own created deals, managers can assign to team reps.
+  - List active deals (`GET /api/deals`) — filtered by `deletedAt IS NULL` with database-level visibility scoping (Manager = team; Rep = owner OR collaborator).
+  - List deleted deals / Trash (`GET /api/deals/trash`) — filtered by `deletedAt IS NOT NULL` with same visibility scoping.
+  - View deal details (`GET /api/deals/:id`) — strict server-side scoping; returns 404 for unpermitted/cross-team deals (IDOR protection).
+  - Edit deal details (`PATCH /api/deals/:id`) — Manager, Owner, or Collaborator can edit title/value/close date; owner reassignment restricted to Managers; blocked if company is archived or deal is deleted.
   - Soft-delete deal (`DELETE /api/deals/:id`):
-    - Manager or Deal Owner only.
+    - Manager or Deal Owner only (collaborators rejected with 403).
     - Sets `deletedAt = NOW()`, `deletedById = req.user.id`.
     - Appends immutable `DELETED` event to `DealHistory`.
     - Physical deal row and full audit history remain intact.
-- [ ] `DealTransitionPolicy` enforcing lifecycle rules:
+- [x] Pure, independent `DealTransitionPolicy` enforcing lifecycle rules:
   - Forward 1-step moves: `NEW → QUALIFIED → PROPOSAL → NEGOTIATION → WON/LOST`.
   - Backward 1-step moves: requires non-empty recorded reason.
-  - Closed deal protection: `WON`/`LOST` blocks further transitions.
-  - Manager reopen: restores `previousStage` with `closedAt = null`.
-- [ ] Vitest unit tests covering valid, invalid, backward, reopened, and soft-delete transitions.
-- *Status*: **PENDING**
+  - Multi-step forward skips and multi-step backward jumps rejected.
+  - Closed deal protection: `WON`/`LOST` blocks further direct transitions.
+  - Manager reopen: restores `previousStage` with `closedAt = null` (Manager only).
+- [x] Atomic Prisma `$transaction` writing Deal state and `DealHistory` records (`CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `REOPENED`, `DELETED`).
+- [x] Comprehensive automated Vitest integration suite (41 test scenarios covering transition policy unit tests, authentication perimeter, creation, decimal precision, scoping, IDOR protection, collaborator permissions, lifecycle moves, closed protection, reopen, soft deletion, and trash scoping).
+- *Status*: **COMPLETED**
 
 ### Phase 6: Collaboration & Immutable Deal History
 - [ ] Add collaborator endpoint (`POST /api/deals/:id/collaborators`) — Manager or Deal Owner only.

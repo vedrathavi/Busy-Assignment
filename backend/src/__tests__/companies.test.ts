@@ -61,8 +61,6 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
       where: { id: COMPANIES.legacyIron },
       data: { isArchived: true, ownerId: USER_REP3_ID },
     });
-
-    await prisma.$disconnect();
   });
 
   // ==========================================================================

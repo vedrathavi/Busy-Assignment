@@ -50,7 +50,6 @@ describe('Phase 3: Authentication & Server-Side Authorization', { timeout: 25000
       where: { email: 'alex@busy.com' },
       data: { role: UserRole.SALES_REP },
     });
-    await prisma.$disconnect();
   });
 
   // --------------------------------------------------------------------------
