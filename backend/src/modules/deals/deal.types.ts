@@ -31,6 +31,46 @@ export interface DealCollaboratorSummary {
   };
 }
 
+export interface SafeUserSummary {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface CollaboratorResponse {
+  dealId: string;
+  userId: string;
+  createdAt: Date;
+  user: SafeUserSummary;
+}
+
+export interface AddCollaboratorInput {
+  userId: string;
+}
+
+export interface AddNoteInput {
+  note: string;
+}
+
+export interface DealHistoryResponse {
+  id: string;
+  dealId: string;
+  actorId: string;
+  type: string;
+  oldStage: DealStage | null;
+  newStage: DealStage | null;
+  oldOwnerId: string | null;
+  newOwnerId: string | null;
+  collaboratorId: string | null;
+  reason: string | null;
+  note: string | null;
+  createdAt: Date;
+  actor?: SafeUserSummary;
+  collaborator?: SafeUserSummary | null;
+  oldOwner?: SafeUserSummary | null;
+  newOwner?: SafeUserSummary | null;
+}
+
 export interface DealResponse {
   id: string;
   teamId: string;

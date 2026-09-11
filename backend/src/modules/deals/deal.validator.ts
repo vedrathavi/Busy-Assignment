@@ -73,7 +73,27 @@ export const dealIdParamSchema = z.object({
   id: z.string().uuid('Invalid deal ID format'),
 });
 
+export const addCollaboratorSchema = z.object({
+  userId: z.string().uuid('Invalid collaborator user ID format'),
+});
+
+export const collaboratorUserParamSchema = z.object({
+  id: z.string().uuid('Invalid deal ID format'),
+  userId: z.string().uuid('Invalid collaborator user ID format'),
+});
+
+export const addNoteSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(1, 'Note content cannot be empty')
+    .max(5000, 'Note content cannot exceed 5000 characters'),
+});
+
 export type CreateDealSchemaType = z.infer<typeof createDealSchema>;
 export type UpdateDealSchemaType = z.infer<typeof updateDealSchema>;
 export type TransitionStageSchemaType = z.infer<typeof transitionStageSchema>;
 export type DealQuerySchemaType = z.infer<typeof dealQuerySchema>;
+export type AddCollaboratorSchemaType = z.infer<typeof addCollaboratorSchema>;
+export type CollaboratorUserParamSchemaType = z.infer<typeof collaboratorUserParamSchema>;
+export type AddNoteSchemaType = z.infer<typeof addNoteSchema>;

@@ -2,13 +2,57 @@ import { DealStage, HistoryType, Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../../database/prisma';
 import { AuthUser } from '../auth/auth.types';
 import {
+  CollaboratorResponse,
   CreateDealInput,
+  DealHistoryResponse,
   DealListQuery,
   DealListResponse,
   DealResponse,
   STAGE_PROBABILITY,
   UpdateDealInput,
 } from './deal.types';
+
+const safeUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+} as const;
+
+const collaboratorSelect = {
+  dealId: true,
+  userId: true,
+  createdAt: true,
+  user: {
+    select: safeUserSelect,
+  },
+} as const;
+
+const dealHistorySelect = {
+  id: true,
+  dealId: true,
+  actorId: true,
+  type: true,
+  oldStage: true,
+  newStage: true,
+  oldOwnerId: true,
+  newOwnerId: true,
+  collaboratorId: true,
+  reason: true,
+  note: true,
+  createdAt: true,
+  actor: {
+    select: safeUserSelect,
+  },
+  collaborator: {
+    select: safeUserSelect,
+  },
+  oldOwner: {
+    select: safeUserSelect,
+  },
+  newOwner: {
+    select: safeUserSelect,
+  },
+} as const;
 
 const dealSelect = {
   id: true,
@@ -454,6 +498,124 @@ export class DealRepository {
       });
 
       return mapDealToResponse(deletedDeal);
+    });
+  }
+
+  /**
+   * Lists all collaborators on a deal.
+   */
+  async listCollaborators(dealId: string): Promise<CollaboratorResponse[]> {
+    return prisma.dealCollaborator.findMany({
+      where: { dealId },
+      select: collaboratorSelect,
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
+   * Finds a specific collaborator record on a deal.
+   */
+  async findCollaborator(dealId: string, userId: string): Promise<{ dealId: string; userId: string } | null> {
+    return prisma.dealCollaborator.findUnique({
+      where: {
+        dealId_userId: {
+          dealId,
+          userId,
+        },
+      },
+    });
+  }
+
+  /**
+   * Atomically adds a collaborator and writes a COLLABORATOR_ADDED history event.
+   */
+  async addCollaboratorWithHistory(
+    dealId: string,
+    collaboratorId: string,
+    actorId: string
+  ): Promise<CollaboratorResponse> {
+    return prisma.$transaction(async (tx) => {
+      const collaborator = await tx.dealCollaborator.create({
+        data: {
+          dealId,
+          userId: collaboratorId,
+        },
+        select: collaboratorSelect,
+      });
+
+      await tx.dealHistory.create({
+        data: {
+          dealId,
+          actorId,
+          collaboratorId,
+          type: HistoryType.COLLABORATOR_ADDED,
+        },
+      });
+
+      return collaborator;
+    });
+  }
+
+  /**
+   * Atomically removes a collaborator and writes a COLLABORATOR_REMOVED history event.
+   */
+  async removeCollaboratorWithHistory(
+    dealId: string,
+    collaboratorId: string,
+    actorId: string
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.dealCollaborator.delete({
+        where: {
+          dealId_userId: {
+            dealId,
+            userId: collaboratorId,
+          },
+        },
+      });
+
+      await tx.dealHistory.create({
+        data: {
+          dealId,
+          actorId,
+          collaboratorId,
+          type: HistoryType.COLLABORATOR_REMOVED,
+        },
+      });
+    });
+  }
+
+  /**
+   * Atomically adds a note to a deal and records a NOTE_ADDED history event.
+   */
+  async addNoteWithHistory(
+    dealId: string,
+    note: string,
+    actorId: string
+  ): Promise<DealHistoryResponse> {
+    return prisma.$transaction(async (tx) => {
+      const history = await tx.dealHistory.create({
+        data: {
+          dealId,
+          actorId,
+          type: HistoryType.NOTE_ADDED,
+          note,
+        },
+        select: dealHistorySelect,
+      });
+
+      return history;
+    });
+  }
+
+  /**
+   * Retrieves all immutable history events for a deal, ordered newest-first.
+   */
+  async getDealHistory(dealId: string): Promise<DealHistoryResponse[]> {
+    return prisma.dealHistory.findMany({
+      where: { dealId },
+      select: dealHistorySelect,
+      orderBy: { createdAt: 'desc' },
     });
   }
 }

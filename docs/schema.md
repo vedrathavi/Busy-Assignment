@@ -200,11 +200,12 @@ Append-only immutable audit trail for every critical deal event. **No edit or de
 | `id` | UUID | Primary Key, default UUIDv4 | Unique event identifier |
 | `dealId` | UUID | NOT NULL, Foreign Key → `Deal.id` | Target deal (retained permanently alongside soft-deleted deals) |
 | `actorId` | UUID | NOT NULL, Foreign Key → `User.id` | User who performed the action |
-| `type` | ENUM (`HistoryType`)| NOT NULL | `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `NOTE_ADDED`, `REOPENED`, `DELETED` |
+| `type` | ENUM (`HistoryType`)| NOT NULL | `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `COLLABORATOR_ADDED`, `COLLABORATOR_REMOVED`, `NOTE_ADDED`, `REOPENED`, `DELETED` |
 | `oldStage` | ENUM (`DealStage`) | NULLABLE | Pre-transition stage |
 | `newStage` | ENUM (`DealStage`) | NULLABLE | Post-transition stage |
 | `oldOwnerId` | UUID | NULLABLE, Foreign Key → `User.id` | Previous owner (for reassignments) |
 | `newOwnerId` | UUID | NULLABLE, Foreign Key → `User.id` | New owner (for reassignments) |
+| `collaboratorId` | UUID | NULLABLE, Foreign Key → `User.id` | Added or removed collaborator user ID |
 | `reason` | TEXT | NULLABLE | Mandatory reason when moving backward |
 | `note` | TEXT | NULLABLE | Free-text note added by rep/manager |
 | `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Immutable event occurrence timestamp |

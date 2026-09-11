@@ -97,6 +97,51 @@ export class DealPolicy {
     }
     return deal.ownerId === user.id;
   }
+
+  /**
+   * Evaluates if the user has permission to add or remove collaborators on a deal.
+   * - Manager: Allowed on any team deal.
+   * - Deal Owner: Allowed.
+   * - Collaborator: FORBIDDEN (collaborators cannot manage other collaborators).
+   * - Unassociated Rep: FORBIDDEN.
+   */
+  canManageCollaborators(user: AuthUser, deal: { teamId: string; ownerId: string }): boolean {
+    if (user.teamId !== deal.teamId) {
+      return false;
+    }
+    if (user.role === UserRole.MANAGER) {
+      return true;
+    }
+    return deal.ownerId === user.id;
+  }
+
+  /**
+   * Evaluates if the user has permission to add notes to a deal.
+   * - Manager: Allowed on any team deal.
+   * - Deal Owner: Allowed.
+   * - Deal Collaborator: Allowed.
+   * - Unassociated Rep: FORBIDDEN.
+   */
+  canAddNote(
+    user: AuthUser,
+    deal: { teamId: string; ownerId: string; collaborators?: Array<{ userId: string }> }
+  ): boolean {
+    return this.canEdit(user, deal);
+  }
+
+  /**
+   * Evaluates if the user has permission to view a deal's immutable history.
+   * - Manager: Allowed on any team deal (including soft-deleted deals).
+   * - Deal Owner: Allowed (including soft-deleted deals).
+   * - Deal Collaborator: Allowed (including soft-deleted deals).
+   * - Unassociated Rep: FORBIDDEN.
+   */
+  canViewHistory(
+    user: AuthUser,
+    deal: { teamId: string; ownerId: string; collaborators?: Array<{ userId: string }> }
+  ): boolean {
+    return this.canView(user, deal);
+  }
 }
 
 export const dealPolicy = new DealPolicy();

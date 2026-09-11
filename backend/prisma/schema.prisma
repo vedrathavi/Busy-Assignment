@@ -34,6 +34,8 @@ enum HistoryType {
   CREATED
   STAGE_CHANGED
   OWNER_CHANGED
+  COLLABORATOR_ADDED
+  COLLABORATOR_REMOVED
   NOTE_ADDED
   REOPENED
   DELETED
@@ -84,9 +86,10 @@ model User {
   ownedDeals      Deal[]             @relation("DealOwner")
   deletedDeals    Deal[]             @relation("DealDeletedBy")
   collaborations  DealCollaborator[]
-  historyActions  DealHistory[]      @relation("HistoryActor")
-  historyOldOwner DealHistory[]      @relation("HistoryOldOwner")
-  historyNewOwner DealHistory[]      @relation("HistoryNewOwner")
+  historyActions      DealHistory[]      @relation("HistoryActor")
+  historyOldOwner     DealHistory[]      @relation("HistoryOldOwner")
+  historyNewOwner     DealHistory[]      @relation("HistoryNewOwner")
+  historyCollaborator DealHistory[]      @relation("HistoryCollaborator")
 }
 
 model Company {
@@ -161,16 +164,18 @@ model DealHistory {
   type       HistoryType
   oldStage   DealStage?
   newStage   DealStage?
-  oldOwnerId String?     @db.Uuid
-  newOwnerId String?     @db.Uuid
-  reason     String?     @db.Text
-  note       String?     @db.Text
-  createdAt  DateTime    @default(now())
+  oldOwnerId     String?     @db.Uuid
+  newOwnerId     String?     @db.Uuid
+  collaboratorId String?     @db.Uuid
+  reason         String?     @db.Text
+  note           String?     @db.Text
+  createdAt      DateTime    @default(now())
 
-  deal     Deal  @relation(fields: [dealId], references: [id])
-  actor    User  @relation("HistoryActor", fields: [actorId], references: [id])
-  oldOwner User? @relation("HistoryOldOwner", fields: [oldOwnerId], references: [id])
-  newOwner User? @relation("HistoryNewOwner", fields: [newOwnerId], references: [id])
+  deal         Deal  @relation(fields: [dealId], references: [id])
+  actor        User  @relation("HistoryActor", fields: [actorId], references: [id])
+  oldOwner     User? @relation("HistoryOldOwner", fields: [oldOwnerId], references: [id])
+  newOwner     User? @relation("HistoryNewOwner", fields: [newOwnerId], references: [id])
+  collaborator User? @relation("HistoryCollaborator", fields: [collaboratorId], references: [id])
 
   @@index([dealId, createdAt(sort: Desc)])
 }

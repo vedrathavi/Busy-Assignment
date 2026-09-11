@@ -30,6 +30,8 @@ Each significant entry records:
 | **Phase 3** (Prompt 07) | Authentication & Server-Side Authorization | Build stateless JWT auth (`sub = user.id`) with bcrypt, database-authoritative `authenticateToken` middleware, `requireRole` guard, `POST /api/auth/login` (generic 401 on failure), `GET /api/auth/me`, and 16 Vitest tests. |
 | **Phase 4** (Prompt 08) | Companies Module & Scoped Visibility | Implement Companies CRUD, archive, restore with strict Prisma query visibility scoping (Manager = team; Rep = owner OR deal-accessible), IDOR 404 protection, Rep = owner-only for mutation, Manager-only reassignment, and 30 Vitest tests. |
 | **Phase 5** (Prompt 09) | Deals & Lifecycle State Machine | Implement Deals CRUD, Trash view, exact Decimal calculations, pure `DealTransitionPolicy` (1-step forward, 1-step backward with reason, closed deal protection, Manager reopen), collaborator mutation permissions, soft deletion, and 41 Vitest tests. |
+| **Phase 6** (Prompt 10) | Collaboration & Immutable Deal History | Implement Collaborators management (`GET/POST /:id/collaborators`, `DELETE /:id/collaborators/:userId`), Notes (`POST /:id/notes`), Immutable Deal History (`GET /:id/history`), direct access, owner exclusion, soft-deleted history visibility, and 30 Vitest tests. |
+| **Phase 6 Audit** (Prompt 11) | Implementation Verification & Code Integrity Audit | Conduct rigorous 11-point verification audit reviewing git diffs against Phase 5 baseline, proving zero weakened assertions, strict authorization, IDOR protection, transactional history, and 118/118 passing tests without code modifications. |
 
 ---
 
@@ -461,4 +463,106 @@ Each significant entry records:
   - Explicitly validated `value > 0` to reject zero or negative deal values.
   - Standardized `DealResponse` with exact `Decimal` strings and calendar `YYYY-MM-DD` strings.
 - **Final outcome**: Phase 5 is 100% completed, tested, and validated. Ready for Phase 6 (Collaboration & Immutable Deal History).
+
+---
+
+## 2026-09-11 - Prompt 10 - Phase 6: Collaboration, Deal Notes & Immutable Deal History
+
+- **Problem / Task**: Implement Phase 6 of the Sales CRM take-home assignment:
+  1. Deal Collaborator Management (`GET /api/deals/:id/collaborators`, `POST /api/deals/:id/collaborators`, `DELETE /api/deals/:id/collaborators/:userId`).
+  2. Deal Notes (`POST /api/deals/:id/notes`).
+  3. Immutable Deal History API (`GET /api/deals/:id/history`).
+- **User Intent**:
+  - Collaboration is direct and immediate access (no invitations/requests/accept/decline workflow).
+  - Scope boundaries: Zero notifications/alerts schema, zero bulk operations, zero CSV export, zero dashboard, zero frontend.
+  - Owner exclusion: Deal owner cannot be added as a collaborator; Manager cannot be added as a collaborator; only same-team `SALES_REP` can be added.
+  - Management authorization: Only Manager or Deal Owner can add/remove collaborators. Collaborators cannot manage collaborators (403).
+  - Notes: Manager, Owner, or Collaborator can add notes on active deals; soft-deleted deals reject notes (404).
+  - History retrieval: Manager, Owner, or Collaborator can view complete timeline ordered newest-first (`createdAt DESC`). History remains viewable on soft-deleted deals for authorized users.
+  - Immutability: Zero `PATCH`, `PUT`, or `DELETE` endpoints for history or notes (audit trail cannot be mutated or deleted).
+  - Traceability: Collaborator add/remove and note actions atomically generate `DealHistory` records (`COLLABORATOR_ADDED`, `COLLABORATOR_REMOVED`, `NOTE_ADDED`).
+  - Response safety: `passwordHash` must never be exposed in any user, actor, collaborator, or owner response object.
+- **Brief prompt sent to IDE / Code Assistant**:
+  > *"PHASE 6 SCOPE ONLY: 1. Deal collaborators (`GET/POST /:id/collaborators`, `DELETE /:id/collaborators/:userId`). 2. Immutable deal history API (`GET /:id/history`). 3. Deal notes (`POST /:id/notes`). Direct access only, no notification system or collaboration requests. Enforce owner exclusion (owner cannot be collaborator, manager cannot be collaborator, only same-team sales rep). Manager & Deal Owner can add/remove collaborators. Collaborators can view deals, update details, transition stages, add notes, view history, but cannot manage collaborators, reassign owner, or delete deals. Soft-deleted deal history remains viewable. Atomic history creation with `COLLABORATOR_ADDED`, `COLLABORATOR_REMOVED`, `NOTE_ADDED`. Migration `20260911103833_add_collaborator_history` applied. Comprehensive tests with Vitest."*
+- **What IDE / Code Assistant implemented**:
+  - `backend/prisma/schema.prisma`:
+    - Updated `HistoryType` enum with `COLLABORATOR_ADDED` and `COLLABORATOR_REMOVED`.
+    - Added `collaboratorId String? @db.Uuid` and relation `collaborator User?` to `DealHistory`.
+    - Generated and applied migration `20260911103833_add_collaborator_history`.
+  - `backend/src/modules/deals/deal.types.ts`:
+    - Added `CollaboratorResponse`, `AddCollaboratorInput`, `AddNoteInput`, `DealHistoryResponse` with safe nested `actor`, `collaborator`, `oldOwner`, and `newOwner` summaries.
+  - `backend/src/modules/deals/deal.validator.ts`:
+    - Added `addCollaboratorSchema` (`userId` UUID), `collaboratorUserParamSchema`, and `addNoteSchema` (non-empty `content` string max 5000 chars).
+  - `backend/src/modules/deals/deal.policy.ts`:
+    - Implemented `canManageCollaborators(user, deal)` (Manager or Owner on active non-deleted deal).
+    - Implemented `canAddNote(user, deal)` (Manager, Owner, or Collaborator on active non-deleted deal).
+    - Implemented `canViewHistory(user, deal)` (Manager, Owner, or Collaborator on active OR soft-deleted deal).
+  - `backend/src/modules/deals/deal.repository.ts`:
+    - `listCollaborators()`: returns active collaborators with safe user profiles.
+    - `findCollaborator()`: checks existing junction record.
+    - `addCollaboratorWithHistory()`: atomic transaction creating `DealCollaborator` and appending `COLLABORATOR_ADDED` `DealHistory`.
+    - `removeCollaboratorWithHistory()`: atomic transaction deleting `DealCollaborator` and appending `COLLABORATOR_REMOVED` `DealHistory`.
+    - `addNoteWithHistory()`: atomic transaction appending `NOTE_ADDED` `DealHistory` with `note` text.
+    - `getDealHistory()`: fetches all deal timeline records with relations ordered `createdAt: 'desc'`.
+  - `backend/src/modules/deals/deal.service.ts`:
+    - Implemented service methods for collaborator listing, adding (validating team membership, role = `SALES_REP`, not owner, not duplicate), removing, adding notes, and retrieving history (allowing soft-deleted deals).
+  - `backend/src/modules/deals/deal.controller.ts` & `deal.routes.ts`:
+    - Mounted `GET /api/deals/:id/collaborators`, `POST /api/deals/:id/collaborators`, `DELETE /api/deals/:id/collaborators/:userId`, `POST /api/deals/:id/notes`, `GET /api/deals/:id/history`.
+  - `backend/src/__tests__/deals-collaboration.test.ts`:
+    - 30 comprehensive Vitest integration tests across:
+      1. Collaborator listing (Manager, Owner, Collaborator, IDOR protection for unassociated rep).
+      2. Adding collaborators (Owner adds rep, Manager adds rep, rejection of deal owner, rejection of manager, rejection of non-existent user, rejection of cross-team rep, rejection of duplicate collaborator, collaborator cannot add collaborator, soft-deleted deal rejection).
+      3. Removing collaborators (Owner removes collaborator, Manager removes collaborator, non-collaborator removal returns 404, collaborator cannot remove collaborator, unassociated rep rejection, soft-deleted deal rejection).
+      4. Deal notes (Owner adds note, Manager adds note, Collaborator adds note, note content validation, unassociated rep rejection 404, soft-deleted deal rejection 404).
+      5. Immutable deal history (Manager retrieves full history, Collaborator retrieves history, unassociated rep rejected with 404, history viewable on soft-deleted deal, collaboratorId/object included on collaborator events, immutability verification that PUT/PATCH/DELETE endpoints return 404).
+      6. Ownership reassignment preservation (Manager reassigns owner and confirms existing collaborators remain intact).
+- **Human review / testing**:
+  - `npx tsc --noEmit`: Clean compilation with 0 TypeScript errors.
+  - `npx vitest run src/__tests__/deals-collaboration.test.ts`: 30/30 passed.
+  - Complete backend test suite (`npm test`): 118 / 118 tests passed across 5 test suites (100%).
+- **Corrections or rejected suggestions**:
+  - Ensured `canViewHistory` allows soft-deleted deals while `canView` for mutations/active listings continues requiring `deletedAt = null`.
+  - Ensured only one schema migration (`20260911103833_add_collaborator_history`) was created and applied.
+  - Maintained test suite isolation across deals and companies tests by establishing non-seeded deal cleanup.
+- **Final outcome**: Phase 6 is 100% completed, tested, and validated. Ready for Phase 7 (Search, Filtering, Sorting & Pagination).
+
+---
+
+## 2026-09-11 - Prompt 11 - Post-Phase 6: Implementation Verification & Code Integrity Audit
+
+- **Problem / Task**: Perform an exhaustive, read-only verification audit of the Phase 6 implementation and git diff against the Phase 5 baseline without modifying any files. Verify that no test assertions were weakened, no logic was altered to fake test passes, test fixture isolation was maintained cleanly, and confirm 100% compliance with architectural specifications, previous prompts, and real-world domain requirements.
+- **User Intent**:
+  - Request a rigorous, code-level verification audit rather than additional code generation.
+  - Verify exact git diff across all 11 modified/new files (`schema.prisma`, `deal.policy.ts`, `deal.repository.ts`, `deal.service.ts`, `deal.controller.ts`, `deal.routes.ts`, `deal.validator.ts`, `deals-collaboration.test.ts`, `vitest.config.ts`, `companies.test.ts`, `deals.test.ts`).
+  - Verify modified test files: confirm 0 assertions were removed, 0 status codes weakened, 0 tests skipped/disabled, and explain why fixture teardown adjustments were necessary.
+  - Verify authorization matrix directly from code: Manager / Owner collaborator management, collaborator management rejection (403), same-team Sales Rep enforcement, Owner/Manager collaborator exclusion, collaborator deal mutation/stage advance/notes/history permissions, and collaborator reassignment/deletion/reopen rejections.
+  - Verify IDOR protection returning 404 across direct lookups, collaborator endpoints, history, and notes.
+  - Verify soft-delete behavior: mutation rejection on deleted deals vs. history viewability for authorized users.
+  - Verify transactional atomicity: atomic `$transaction` writes across collaborator add/remove, notes, and existing deal mutations.
+  - Verify immutable history: zero edit/delete routes, service methods, or mutations.
+  - Verify response safety: absolute absence of `passwordHash` or sensitive credentials in every response.
+  - Verify `collaboratorId` nullable FK relation and correct population on `COLLABORATOR_ADDED` / `COLLABORATOR_REMOVED`.
+  - Verify test isolation and confirm production code was NOT weakened to accommodate tests.
+  - Execute audit commands: `git diff --stat`, `git diff`, `npx tsc --noEmit`, and `npm test`.
+- **Brief prompt sent to IDE / Code Assistant**:
+  > *"Do not modify any files. Review the actual Phase 6 implementation and git diff against the Phase 5 baseline. I want a verification audit, not another implementation. Check: 1. Show exactly what changed in schema.prisma, deal.policy.ts, deal.repository.ts, deal.service.ts, deal.controller.ts, deal.routes.ts, deal.validator.ts, all Phase 6 tests, vitest.config.ts, companies.test.ts, deals.test.ts. 2. For every modified test file show whether any assertion was removed/weakened/skipped and explain fixture adjustments. 3. Verify Phase 6 authorization directly from code. 4. Verify IDOR protection. 5. Verify soft-delete behavior. 6. Verify transactions. 7. Verify immutable history. 8. Verify response safety. 9. Verify collaboratorId relation. 10. Verify test isolation and confirm production behavior was NOT weakened. 11. Run git diff --stat, git diff, npx tsc --noEmit, npm test. Return only audit findings and final verdict."*
+- **What IDE / Code Assistant implemented / reported**:
+  - Executed read-only audit commands and verified diffs against Phase 5 baseline.
+  - Demonstrated that `companies.test.ts` had **0** assertions removed, **0** status codes weakened, and **0** tests skipped; the only update was in `resetCompanies()` teardown to clean up non-seeded test deals (`where: { id: { notIn: seededDealIds } }`) to prevent residual test deal leakage across test suites.
+  - Verified `deal.policy.ts` and `deal.service.ts`:
+    - `canView(user, deal)` remains a pure relationship check independent of `deletedAt`.
+    - Mutation operations explicitly query `includeDeleted = false` (404 on soft-deleted deals).
+    - `getDealHistory()` explicitly queries `includeDeleted = true` allowing authorized users to inspect history on soft-deleted deals.
+    - Owner and Manager exclusions strictly enforced (`400 Bad Request`).
+    - Collaborator management restricted to Manager and Owner (`403 Forbidden` for collaborators).
+  - Verified transactional atomicity of collaborator add/remove and note actions.
+  - Verified zero history mutation endpoints and full response sanitization (`passwordHash` excluded).
+  - Confirmed clean TypeScript compilation (`npx tsc --noEmit` -> 0 errors) and 100% test pass rate across all 5 test suites (118 / 118 tests passed).
+- **Human review / testing**:
+  - Verified all 11 audit checklist criteria against code diffs and live test logs.
+  - Confirmed test isolation was achieved without weakening any business rule or test assertion.
+- **Corrections or rejected suggestions**: None.
+- **Final outcome**: Comprehensive verification audit completed and documented; all Phase 6 invariants, test suites, and documentation fully verified.
+
+
 

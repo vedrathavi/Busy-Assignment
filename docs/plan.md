@@ -108,19 +108,24 @@ graph TD
 - *Status*: **COMPLETED**
 
 ### Phase 6: Collaboration & Immutable Deal History
-- [ ] Add collaborator endpoint (`POST /api/deals/:id/collaborators`) — Manager or Deal Owner only.
-- [ ] Remove collaborator endpoint (`DELETE /api/deals/:id/collaborators/:userId`) — Manager or Deal Owner only.
-- [ ] Enforce: deal owner cannot be collaborator; collaborators can update deal; collaborators cannot manage other collaborators.
-- [ ] Append-only `DealHistory` creation on:
+- [x] Add collaborator endpoint (`POST /api/deals/:id/collaborators`) — Manager or Deal Owner only.
+- [x] Remove collaborator endpoint (`DELETE /api/deals/:id/collaborators/:userId`) — Manager or Deal Owner only.
+- [x] Enforce: Deal owner cannot be added as collaborator; Manager cannot be added as collaborator; Collaborators can update deal and transition stages; Collaborators cannot manage other collaborators.
+- [x] Direct and immediate collaboration access (no invitation/request/accept/decline state).
+- [x] Add note endpoint (`POST /api/deals/:id/notes`) — Manager, Owner, or Collaborator on active non-deleted deals.
+- [x] Deal timeline/history endpoint (`GET /api/deals/:id/history`) — accessible to authorized users (Manager, Owner, Collaborator) for both active and soft-deleted deals.
+- [x] Append-only `DealHistory` creation with atomic `$transaction` writes:
   - Deal creation (`CREATED`)
   - Stage changes (`STAGE_CHANGED`)
   - Owner reassignment (`OWNER_CHANGED`)
-  - Notes added (`NOTE_ADDED`)
+  - Collaborator added (`COLLABORATOR_ADDED`) with `collaboratorId`
+  - Collaborator removed (`COLLABORATOR_REMOVED`) with `collaboratorId`
+  - Notes added (`NOTE_ADDED`) with note content
   - Reopened (`REOPENED`)
   - Soft deletion (`DELETED`)
-- [ ] Deal timeline endpoint (`GET /api/deals/:id/history`) — accessible for active and deleted deals.
-- [ ] Strictly zero edit/delete endpoints for history.
-- *Status*: **PENDING**
+- [x] Strictly zero edit/delete endpoints for history or notes (immutable audit log).
+- [x] Comprehensive automated Vitest integration suite (30 test scenarios covering collaborator listing, adding, removing, duplicate rejection, owner exclusion, note creation, immutable history retrieval, soft-deleted deal history access, and ownership reassignment preserving collaborators).
+- *Status*: **COMPLETED**
 
 ### Phase 7: Search, Filtering, Sorting & Server-Side Pagination
 - [ ] Query parser and Zod schema for search/filter parameters.

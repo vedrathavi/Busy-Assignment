@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { UnauthorizedError } from '../../errors/app-error';
 import { dealService } from './deal.service';
 import {
+  addCollaboratorSchema,
+  addNoteSchema,
+  collaboratorUserParamSchema,
   createDealSchema,
   dealIdParamSchema,
   dealQuerySchema,
@@ -160,6 +163,103 @@ export class DealController {
       res.status(200).json({
         success: true,
         data: deletedDeal,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/deals/:id/collaborators
+   */
+  async listCollaborators(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const { id } = dealIdParamSchema.parse(req.params);
+      const collaborators = await dealService.listCollaborators(req.user, id);
+
+      res.status(200).json({
+        success: true,
+        data: collaborators,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/deals/:id/collaborators
+   */
+  async addCollaborator(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const { id } = dealIdParamSchema.parse(req.params);
+      const validatedBody = addCollaboratorSchema.parse(req.body);
+      const collaborator = await dealService.addCollaborator(req.user, id, validatedBody);
+
+      res.status(201).json({
+        success: true,
+        data: collaborator,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/deals/:id/collaborators/:userId
+   */
+  async removeCollaborator(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const { id, userId } = collaboratorUserParamSchema.parse(req.params);
+      const result = await dealService.removeCollaborator(req.user, id, userId);
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/deals/:id/notes
+   */
+  async addNote(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const { id } = dealIdParamSchema.parse(req.params);
+      const validatedBody = addNoteSchema.parse(req.body);
+      const note = await dealService.addNote(req.user, id, validatedBody);
+
+      res.status(201).json({
+        success: true,
+        data: note,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/deals/:id/history
+   */
+  async getHistory(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const { id } = dealIdParamSchema.parse(req.params);
+      const history = await dealService.getDealHistory(req.user, id);
+
+      res.status(200).json({
+        success: true,
+        data: history,
       });
     } catch (error) {
       next(error);

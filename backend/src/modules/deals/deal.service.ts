@@ -6,7 +6,11 @@ import { dealPolicy } from './deal.policy';
 import { dealRepository } from './deal.repository';
 import { dealTransitionPolicy } from './deal.transition-policy';
 import {
+  AddCollaboratorInput,
+  AddNoteInput,
+  CollaboratorResponse,
   CreateDealInput,
+  DealHistoryResponse,
   DealListQuery,
   DealListResponse,
   DealResponse,
@@ -239,6 +243,143 @@ export class DealService {
     }
 
     return dealRepository.softDelete(dealId, user.id);
+  }
+
+  /**
+   * Lists all collaborators on an active deal.
+   */
+  async listCollaborators(user: AuthUser, dealId: string): Promise<CollaboratorResponse[]> {
+    const deal = await dealRepository.findByIdForTeam(dealId, user.teamId, false);
+
+    if (!deal) {
+      throw new NotFoundError('Deal not found');
+    }
+
+    if (!dealPolicy.canView(user, deal)) {
+      throw new NotFoundError('Deal not found');
+    }
+
+    return dealRepository.listCollaborators(dealId);
+  }
+
+  /**
+   * Adds a collaborator to an active deal.
+   * Only Manager or Deal Owner can add collaborators.
+   * Collaborators must be valid Sales Reps in the same team and cannot be the Deal Owner.
+   */
+  async addCollaborator(
+    user: AuthUser,
+    dealId: string,
+    input: AddCollaboratorInput
+  ): Promise<CollaboratorResponse> {
+    const deal = await dealRepository.findByIdForTeam(dealId, user.teamId, false);
+
+    if (!deal) {
+      throw new NotFoundError('Deal not found');
+    }
+
+    if (!dealPolicy.canManageCollaborators(user, deal)) {
+      throw new ForbiddenError('Only the deal owner or a manager can add collaborators');
+    }
+
+    // Owner cannot be added as collaborator
+    if (input.userId === deal.ownerId) {
+      throw new BadRequestError('Deal owner cannot be added as a collaborator');
+    }
+
+    // Validate target user: must exist, same team, role SALES_REP
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        id: input.userId,
+        teamId: user.teamId,
+        organizationId: user.organizationId,
+      },
+    });
+
+    if (!targetUser) {
+      throw new BadRequestError('Target collaborator does not exist or does not belong to your team');
+    }
+
+    if (targetUser.role !== UserRole.SALES_REP) {
+      throw new BadRequestError('Collaborators must have the SALES_REP role');
+    }
+
+    // Check for duplicate collaborator
+    const existingCollaborator = await dealRepository.findCollaborator(dealId, input.userId);
+    if (existingCollaborator) {
+      throw new BadRequestError('User is already a collaborator on this deal');
+    }
+
+    return dealRepository.addCollaboratorWithHistory(dealId, input.userId, user.id);
+  }
+
+  /**
+   * Removes a collaborator from an active deal.
+   * Only Manager or Deal Owner can remove collaborators.
+   */
+  async removeCollaborator(
+    user: AuthUser,
+    dealId: string,
+    targetUserId: string
+  ): Promise<{ message: string }> {
+    const deal = await dealRepository.findByIdForTeam(dealId, user.teamId, false);
+
+    if (!deal) {
+      throw new NotFoundError('Deal not found');
+    }
+
+    if (!dealPolicy.canManageCollaborators(user, deal)) {
+      throw new ForbiddenError('Only the deal owner or a manager can remove collaborators');
+    }
+
+    const existing = await dealRepository.findCollaborator(dealId, targetUserId);
+    if (!existing) {
+      throw new BadRequestError('User is not a collaborator on this deal');
+    }
+
+    await dealRepository.removeCollaboratorWithHistory(dealId, targetUserId, user.id);
+    return { message: 'Collaborator removed successfully' };
+  }
+
+  /**
+   * Adds an immutable note to a deal.
+   * Manager, Deal Owner, or Deal Collaborator can add notes.
+   */
+  async addNote(
+    user: AuthUser,
+    dealId: string,
+    input: AddNoteInput
+  ): Promise<DealHistoryResponse> {
+    const deal = await dealRepository.findByIdForTeam(dealId, user.teamId, false);
+
+    if (!deal) {
+      throw new NotFoundError('Deal not found');
+    }
+
+    if (!dealPolicy.canAddNote(user, deal)) {
+      throw new ForbiddenError('You do not have permission to add notes to this deal');
+    }
+
+    return dealRepository.addNoteWithHistory(dealId, input.note, user.id);
+  }
+
+  /**
+   * Retrieves the immutable audit history for a deal (including soft-deleted deals).
+   * Manager, Deal Owner, or Deal Collaborator can view history.
+   */
+  async getDealHistory(user: AuthUser, dealId: string): Promise<DealHistoryResponse[]> {
+    // includeDeleted = true: soft-deleted deal history remains viewable to authorized users
+    const deal = await dealRepository.findByIdForTeam(dealId, user.teamId, true);
+
+    if (!deal) {
+      throw new NotFoundError('Deal not found');
+    }
+
+    if (!dealPolicy.canViewHistory(user, deal)) {
+      throw new NotFoundError('Deal not found');
+    }
+
+    return dealRepository.getDealHistory(dealId);
   }
 }
 

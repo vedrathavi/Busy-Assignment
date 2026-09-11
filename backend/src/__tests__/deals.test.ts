@@ -324,6 +324,10 @@ describe('Phase 5: Deals & Lifecycle State Machine Integration Tests', { timeout
           ownerId: USER_REP2_ID,
         });
 
+      if (res.body?.data?.id) {
+        createdDealIds.push(res.body.data.id);
+      }
+
       expect(res.status).toBe(403);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toContain('cannot assign deals to other users');

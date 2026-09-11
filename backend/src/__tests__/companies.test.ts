@@ -32,21 +32,66 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
 
   let createdCompanyIds: string[] = [];
 
-  beforeAll(async () => {
-    // Generate valid tokens for each role
-    managerToken = signToken({ sub: USER_MANAGER_ID });
-    rep1Token    = signToken({ sub: USER_REP1_ID });
-    rep2Token    = signToken({ sub: USER_REP2_ID });
-    rep3Token    = signToken({ sub: USER_REP3_ID });
-  });
+  const seededCollaborators = [
+    { dealId: '30000000-0000-4000-8000-000000000003', userId: USER_REP1_ID },
+    { dealId: '30000000-0000-4000-8000-000000000003', userId: USER_REP2_ID },
+    { dealId: '30000000-0000-4000-8000-000000000004', userId: USER_REP2_ID },
+    { dealId: '30000000-0000-4000-8000-000000000008', userId: USER_REP3_ID },
+    { dealId: '30000000-0000-4000-8000-000000000010', userId: USER_REP1_ID },
+    { dealId: '30000000-0000-4000-8000-000000000013', userId: USER_REP1_ID },
+  ];
 
-  afterAll(async () => {
+  const resetCompanies = async () => {
     // Clean up any dynamically created test companies
     if (createdCompanyIds.length > 0) {
       await prisma.company.deleteMany({
         where: { id: { in: createdCompanyIds } },
       });
+      createdCompanyIds.length = 0;
     }
+
+    // Clean up any dynamically created deals and their related records
+    const seededDealIds = [
+      '30000000-0000-4000-8000-000000000001',
+      '30000000-0000-4000-8000-000000000002',
+      '30000000-0000-4000-8000-000000000003',
+      '30000000-0000-4000-8000-000000000004',
+      '30000000-0000-4000-8000-000000000005',
+      '30000000-0000-4000-8000-000000000006',
+      '30000000-0000-4000-8000-000000000007',
+      '30000000-0000-4000-8000-000000000008',
+      '30000000-0000-4000-8000-000000000009',
+      '30000000-0000-4000-8000-000000000010',
+      '30000000-0000-4000-8000-000000000011',
+      '30000000-0000-4000-8000-000000000012',
+      '30000000-0000-4000-8000-000000000013',
+      '30000000-0000-4000-8000-000000000014',
+      '30000000-0000-4000-8000-000000000015',
+      '30000000-0000-4000-8000-000000000016',
+      '30000000-0000-4000-8000-000000000017',
+      '30000000-0000-4000-8000-000000000018',
+    ];
+    await prisma.dealHistory.deleteMany({
+      where: { dealId: { notIn: seededDealIds } },
+    });
+    await prisma.dealCollaborator.deleteMany({
+      where: {
+        OR: [
+          { dealId: { notIn: seededDealIds } },
+          {
+            NOT: {
+              OR: seededCollaborators.map((c) => ({
+                dealId: c.dealId,
+                userId: c.userId,
+              })),
+            },
+          },
+        ],
+      },
+    });
+    await prisma.deal.deleteMany({
+      where: { id: { notIn: seededDealIds } },
+    });
 
     // Reset any modified seeded company states
     await prisma.company.update({
@@ -61,6 +106,20 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
       where: { id: COMPANIES.legacyIron },
       data: { isArchived: true, ownerId: USER_REP3_ID },
     });
+  };
+
+  beforeAll(async () => {
+    // Generate valid tokens for each role
+    managerToken = signToken({ sub: USER_MANAGER_ID });
+    rep1Token    = signToken({ sub: USER_REP1_ID });
+    rep2Token    = signToken({ sub: USER_REP2_ID });
+    rep3Token    = signToken({ sub: USER_REP3_ID });
+
+    await resetCompanies();
+  });
+
+  afterAll(async () => {
+    await resetCompanies();
   });
 
   // ==========================================================================

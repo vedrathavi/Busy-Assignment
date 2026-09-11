@@ -21,4 +21,15 @@ router.patch('/:id/stage', (req, res, next) => dealController.transitionStage(re
 router.post('/:id/reopen', (req, res, next) => dealController.reopen(req, res, next));
 router.delete('/:id', (req, res, next) => dealController.delete(req, res, next));
 
+// Collaborator Management
+router.get('/:id/collaborators', (req, res, next) => dealController.listCollaborators(req, res, next));
+router.post('/:id/collaborators', (req, res, next) => dealController.addCollaborator(req, res, next));
+router.delete('/:id/collaborators/:userId', (req, res, next) => dealController.removeCollaborator(req, res, next));
+
+// Deal Notes
+router.post('/:id/notes', (req, res, next) => dealController.addNote(req, res, next));
+
+// Immutable History API
+router.get('/:id/history', (req, res, next) => dealController.getHistory(req, res, next));
+
 export const dealRouter = router;
