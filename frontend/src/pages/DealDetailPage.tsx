@@ -97,11 +97,13 @@ export function DealDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isBackwardOpen, setIsBackwardOpen] = useState(false);
+  const [isLostOpen, setIsLostOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isReopenOpen, setIsReopenOpen] = useState(false);
   const [isAddCollaboratorOpen, setIsAddCollaboratorOpen] = useState(false);
   const [targetBackwardStage, setTargetBackwardStage] = useState<DealStage>('NEW');
   const [backwardReason, setBackwardReason] = useState('');
+  const [lostReason, setLostReason] = useState('');
   const [newNote, setNewNote] = useState('');
   const [collaboratorUserId, setCollaboratorUserId] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
@@ -189,6 +191,35 @@ export function DealDetailPage() {
       toast.success(`Deal moved backward to ${targetBackwardStage}`);
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Failed to regress stage';
+      setActionError(msg);
+      toast.error(msg);
+    }
+  };
+
+  const openLostModal = () => {
+    setLostReason('');
+    setActionError(null);
+    setIsLostOpen(true);
+  };
+
+  const handleLostSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    if (!lostReason.trim()) {
+      setActionError('Reason is mandatory when marking a deal as Lost');
+      return;
+    }
+    setActionError(null);
+    try {
+      await transitionStageMutation.mutateAsync({
+        id,
+        stage: 'LOST',
+        reason: lostReason.trim(),
+      });
+      setIsLostOpen(false);
+      toast.success('Deal marked as Lost');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || 'Failed to mark deal as Lost';
       setActionError(msg);
       toast.error(msg);
     }
@@ -458,7 +489,7 @@ export function DealDetailPage() {
                 >
                   {reopenDealMutation.isPending ? (
                     <>
-                      <FiLoader className="h-3 w-3 animate-spin text-[#1c1c1c]" />
+                      <span className="inline-block h-3 w-3 rounded-full border-2 border-[#1c1c1c] border-t-transparent animate-spin mr-1" />
                       <span>Reopening...</span>
                     </>
                   ) : (
@@ -511,7 +542,7 @@ export function DealDetailPage() {
             {!isClosed && (
               <div className="mt-4 flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-[#eceae4]/70">
                 <div className="flex items-center gap-2">
-                  {currentStageIndex > 0 && (
+                  {currentStageIndex > 0 && currentStageIndex <= 3 && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -521,7 +552,7 @@ export function DealDetailPage() {
                     >
                       {isTransitioning && targetStage === STAGE_ORDER[currentStageIndex - 1] ? (
                         <>
-                          <FiLoader className="h-3.5 w-3.5 mr-1.5 animate-spin text-amber-800" />
+                          <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-amber-800 border-t-transparent animate-spin mr-1.5" />
                           <span>Moving Back...</span>
                         </>
                       ) : (
@@ -532,45 +563,48 @@ export function DealDetailPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isTransitioning}
-                    onClick={() => handleAdvanceStage('LOST')}
-                    className="text-xs text-rose-700 hover:bg-rose-50 border-[#eceae4]"
-                  >
-                    {isTransitioning && targetStage === 'LOST' ? (
-                      <>
-                        <FiLoader className="h-3.5 w-3.5 mr-1.5 animate-spin text-rose-700" />
-                        <span>Marking Lost...</span>
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="h-3.5 w-3.5 mr-1" />
-                        <span>Mark Lost</span>
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isTransitioning}
-                    onClick={() => handleAdvanceStage('WON')}
-                    className="text-xs text-emerald-700 hover:bg-emerald-50 border-[#eceae4]"
-                  >
-                    {isTransitioning && targetStage === 'WON' ? (
-                      <>
-                        <FiLoader className="h-3.5 w-3.5 mr-1.5 animate-spin text-emerald-700" />
-                        <span>Marking Won...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                        <span>Mark Won</span>
-                      </>
-                    )}
-                  </Button>
-                  {nextStage && (
+                  {deal.stage === 'NEGOTIATION' ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isTransitioning}
+                        onClick={openLostModal}
+                        className="text-xs text-rose-700 hover:bg-rose-50 border-[#eceae4]"
+                      >
+                        {isTransitioning && targetStage === 'LOST' ? (
+                          <>
+                            <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-rose-700 border-t-transparent animate-spin mr-1.5" />
+                            <span>Marking Lost...</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                            <span>Mark Lost</span>
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isTransitioning}
+                        onClick={() => handleAdvanceStage('WON')}
+                        className="text-xs text-emerald-700 hover:bg-emerald-50 border-[#eceae4]"
+                      >
+                        {isTransitioning && targetStage === 'WON' ? (
+                          <>
+                            <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-emerald-700 border-t-transparent animate-spin mr-1.5" />
+                            <span>Marking Won...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                            <span>Mark Won</span>
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  ) : nextStage ? (
                     <Button
                       size="sm"
                       onClick={() => handleAdvanceStage(nextStage)}
@@ -579,7 +613,7 @@ export function DealDetailPage() {
                     >
                       {isTransitioning && targetStage === nextStage ? (
                         <>
-                          <FiLoader className="h-3.5 w-3.5 animate-spin text-[#fcfbf8]" />
+                          <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-[#fcfbf8] border-t-transparent animate-spin" />
                           <span>Advancing to {STAGE_LABELS[nextStage]}...</span>
                         </>
                       ) : (
@@ -589,8 +623,35 @@ export function DealDetailPage() {
                         </>
                       )}
                     </Button>
-                  )}
+                  ) : null}
                 </div>
+              </div>
+            )}
+
+            {/* Closed Deal Reopen Action (Manager Only) */}
+            {isClosed && isManager && (
+              <div className="mt-4 flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-[#eceae4]/70">
+                <div className="text-xs text-[#5f5f5d]">
+                  This deal is closed (<strong className="text-[#1c1c1c]">{STAGE_LABELS[deal.stage]}</strong>). As a sales manager, you can reopen it to return to its previous active stage.
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setIsReopenOpen(true)}
+                  disabled={reopenDealMutation.isPending}
+                  className="text-xs bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset gap-1.5"
+                >
+                  {reopenDealMutation.isPending ? (
+                    <>
+                      <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-[#fcfbf8] border-t-transparent animate-spin" />
+                      <span>Reopening Deal...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Reopen Deal</span>
+                    </>
+                  )}
+                </Button>
               </div>
             )}
           </div>
@@ -643,7 +704,12 @@ export function DealDetailPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-[#5f5f5d]">Account Owner</p>
-                <p className="text-sm font-semibold text-[#1c1c1c] mt-1">{deal.owner?.name} ({deal.owner?.email})</p>
+                <div className="mt-1">
+                  <p className="text-sm font-semibold text-[#1c1c1c] leading-tight">{deal.owner?.name || 'Unassigned'}</p>
+                  {deal.owner?.email && (
+                    <p className="text-xs text-[#5f5f5d] font-normal mt-0.5">{deal.owner.email}</p>
+                  )}
+                </div>
               </div>
               <div>
                 <p className="text-xs font-medium text-[#5f5f5d]">Created At</p>
@@ -827,11 +893,60 @@ export function DealDetailPage() {
                           </span>
                         </div>
 
-                        {evt.oldStage && evt.newStage && (
-                          <p className="text-xs text-[#5f5f5d]">
-                            Stage changed from <strong className="text-[#1c1c1c]">{STAGE_LABELS[evt.oldStage]}</strong> to{' '}
+                        {evt.type === 'REOPENED' && evt.newStage && (
+                          <p className="text-xs text-[#1c1c1c]">
+                            Deal <strong className="text-amber-800 font-semibold">REOPENED</strong> and returned to stage{' '}
                             <strong className="text-[#1c1c1c]">{STAGE_LABELS[evt.newStage]}</strong>
+                            {evt.oldStage && <span className="text-[#5f5f5d]"> (was {STAGE_LABELS[evt.oldStage]})</span>}
                           </p>
+                        )}
+
+                        {evt.type === 'STAGE_CHANGED' && evt.oldStage && evt.newStage && (
+                          <div>
+                            {evt.newStage === 'WON' ? (
+                              <p className="text-xs text-emerald-800 font-medium">
+                                Deal marked as <strong>WON</strong> from {STAGE_LABELS[evt.oldStage]}
+                              </p>
+                            ) : evt.newStage === 'LOST' ? (
+                              <p className="text-xs text-rose-800 font-medium">
+                                Deal marked as <strong>LOST</strong> from {STAGE_LABELS[evt.oldStage]}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-[#5f5f5d]">
+                                Stage transition: <strong className="text-[#1c1c1c]">{STAGE_LABELS[evt.oldStage]}</strong> →{' '}
+                                <strong className="text-[#1c1c1c]">{STAGE_LABELS[evt.newStage]}</strong>
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {evt.type === 'CREATED' && (
+                          <p className="text-xs text-[#5f5f5d]">Deal created at stage <strong>New</strong></p>
+                        )}
+
+                        {evt.type === 'OWNER_CHANGED' && (
+                          <p className="text-xs text-[#5f5f5d]">
+                            Deal owner reassigned
+                            {evt.oldOwner && evt.newOwner && (
+                              <span> from <strong>{evt.oldOwner.name}</strong> to <strong>{evt.newOwner.name}</strong></span>
+                            )}
+                          </p>
+                        )}
+
+                        {evt.type === 'COLLABORATOR_ADDED' && (
+                          <p className="text-xs text-[#5f5f5d]">
+                            Collaborator added: <strong>{evt.collaborator?.name || 'Team member'}</strong>
+                          </p>
+                        )}
+
+                        {evt.type === 'COLLABORATOR_REMOVED' && (
+                          <p className="text-xs text-[#5f5f5d]">
+                            Collaborator removed: <strong>{evt.collaborator?.name || 'Team member'}</strong>
+                          </p>
+                        )}
+
+                        {evt.type === 'DELETED' && (
+                          <p className="text-xs text-rose-700 font-medium">Deal moved to trash</p>
                         )}
 
                         {evt.reason && (
@@ -1000,11 +1115,55 @@ export function DealDetailPage() {
               >
                 {transitionStageMutation.isPending ? (
                   <>
-                    <FiLoader className="h-3.5 w-3.5 mr-1.5 animate-spin text-white" />
+                    <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin mr-1.5" />
                     <span>Regressing Stage...</span>
                   </>
                 ) : (
                   'Confirm Stage Regression'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark Deal as Lost Dialog */}
+      <Dialog open={isLostOpen} onOpenChange={setIsLostOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark Deal as Lost</DialogTitle>
+            <DialogDescription>
+              Record the outcome and reason for marking this opportunity as lost.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleLostSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="lostReason">Reason *</Label>
+              <Textarea
+                id="lostReason"
+                value={lostReason}
+                onChange={(e) => setLostReason(e.target.value)}
+                placeholder="Why was this deal lost?"
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsLostOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={!lostReason.trim() || transitionStageMutation.isPending}
+                className="bg-rose-700 text-white hover:bg-rose-800"
+              >
+                {transitionStageMutation.isPending ? (
+                  <>
+                    <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin mr-1.5" />
+                    <span>Marking Lost...</span>
+                  </>
+                ) : (
+                  'Mark Lost'
                 )}
               </Button>
             </DialogFooter>

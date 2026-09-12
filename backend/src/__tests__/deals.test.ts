@@ -122,6 +122,39 @@ describe('Phase 5: Deals & Lifecycle State Machine Integration Tests', { timeout
         deletedAt: null,
       },
     });
+
+    // Reset d10 (Priya, NEGOTIATION, Horizon)
+    await prisma.deal.update({
+      where: { id: DEALS.d10 },
+      data: {
+        stage: DealStage.NEGOTIATION,
+        closedAt: null,
+        previousStage: null,
+        deletedAt: null,
+      },
+    });
+
+    // Reset d3 (Marcus, PROPOSAL, Stellar)
+    await prisma.deal.update({
+      where: { id: DEALS.d3 },
+      data: {
+        stage: DealStage.PROPOSAL,
+        closedAt: null,
+        previousStage: null,
+        deletedAt: null,
+      },
+    });
+
+    // Reset d6 (Marcus, LOST, Vortex)
+    await prisma.deal.update({
+      where: { id: DEALS.d6 },
+      data: {
+        stage: DealStage.LOST,
+        closedAt: new Date('2026-08-25T14:30:00.000Z'),
+        previousStage: DealStage.NEGOTIATION,
+        deletedAt: null,
+      },
+    });
   };
 
   beforeAll(async () => {
@@ -146,7 +179,8 @@ describe('Phase 5: Deals & Lifecycle State Machine Integration Tests', { timeout
       expect(dealTransitionPolicy.isTransitionLegal(DealStage.QUALIFIED, DealStage.PROPOSAL).legal).toBe(true);
       expect(dealTransitionPolicy.isTransitionLegal(DealStage.PROPOSAL, DealStage.NEGOTIATION).legal).toBe(true);
       expect(dealTransitionPolicy.isTransitionLegal(DealStage.NEGOTIATION, DealStage.WON).legal).toBe(true);
-      expect(dealTransitionPolicy.isTransitionLegal(DealStage.NEGOTIATION, DealStage.LOST).legal).toBe(true);
+      expect(dealTransitionPolicy.isTransitionLegal(DealStage.NEGOTIATION, DealStage.LOST, 'Valid lost reason').legal).toBe(true);
+      expect(dealTransitionPolicy.isTransitionLegal(DealStage.NEGOTIATION, DealStage.LOST).legal).toBe(false);
     });
 
     it('2. should reject forward multi-step skipping', () => {
@@ -353,6 +387,75 @@ describe('Phase 5: Deals & Lifecycle State Machine Integration Tests', { timeout
       createdDealIds.push(res.body.data.id);
     });
 
+    it('13a. should allow Sales Rep to specify their own ID as ownerId during creation', async () => {
+      const res = await request(app)
+        .post('/api/deals')
+        .set('Authorization', `Bearer ${rep1Token}`)
+        .send({
+          title: 'Rep Self-Assigned Deal',
+          companyId: COMPANIES.acme,
+          value: '60000.00',
+          expectedCloseDate: '2026-12-20',
+          ownerId: USER_REP1_ID,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.ownerId).toBe(USER_REP1_ID);
+
+      createdDealIds.push(res.body.data.id);
+    });
+
+    it('13b. should reject Manager creating deal without specifying an owner with 400', async () => {
+      const res = await request(app)
+        .post('/api/deals')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          title: 'Unassigned Manager Deal',
+          companyId: COMPANIES.apex,
+          value: '75000.00',
+          expectedCloseDate: '2026-12-20',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Managers must explicitly assign an owning sales rep');
+    });
+
+    it('13c. should reject Manager attempting to assign a Manager as deal owner with 400', async () => {
+      const res = await request(app)
+        .post('/api/deals')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          title: 'Manager Owned Deal Attempt',
+          companyId: COMPANIES.apex,
+          value: '75000.00',
+          expectedCloseDate: '2026-12-20',
+          ownerId: USER_MANAGER_ID,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Deal owner must have the SALES_REP role');
+    });
+
+    it('13d. should reject Manager attempting to assign non-existent / other-team user as deal owner with 400', async () => {
+      const res = await request(app)
+        .post('/api/deals')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          title: 'External Deal Attempt',
+          companyId: COMPANIES.apex,
+          value: '75000.00',
+          expectedCloseDate: '2026-12-20',
+          ownerId: '99999999-9999-4999-8999-999999999999',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Target owner does not exist or does not belong to your team');
+    });
+
     it('14. should reject deal creation on an archived company with 400', async () => {
       const res = await request(app)
         .post('/api/deals')
@@ -362,6 +465,7 @@ describe('Phase 5: Deals & Lifecycle State Machine Integration Tests', { timeout
           companyId: COMPANIES.legacyIron, // Archived in seed
           value: '50000.00',
           expectedCloseDate: '2026-12-01',
+          ownerId: USER_REP1_ID,
         });
 
       expect(res.status).toBe(400);
@@ -689,6 +793,126 @@ describe('Phase 5: Deals & Lifecycle State Machine Integration Tests', { timeout
       expect(res.body.success).toBe(false);
       expect(res.body.message).toContain('Closed deals cannot be transitioned');
     });
+
+    it('33a. should allow transition from NEGOTIATION -> LOST when a valid reason is provided', async () => {
+      // d10 is currently NEGOTIATION, owned by Priya (rep2Token)
+      const res = await request(app)
+        .patch(`/api/deals/${DEALS.d10}/stage`)
+        .set('Authorization', `Bearer ${rep2Token}`)
+        .send({
+          stage: DealStage.LOST,
+          reason: 'Client selected incumbent vendor due to existing multi-year contract',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.stage).toBe(DealStage.LOST);
+      expect(res.body.data.stageProbability).toBe(0.00);
+      expect(res.body.data.closedAt).not.toBeNull();
+      expect(res.body.data.previousStage).toBe(DealStage.NEGOTIATION);
+
+      // Verify immutable DealHistory records reason and actor
+      const history = await prisma.dealHistory.findFirst({
+        where: { dealId: DEALS.d10, type: 'STAGE_CHANGED' },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(history?.reason).toBe('Client selected incumbent vendor due to existing multi-year contract');
+      expect(history?.actorId).toBe(USER_REP2_ID);
+    });
+
+    it('33b. should reject transition from NEGOTIATION -> LOST without a non-empty reason with 400', async () => {
+      // d3 is currently PROPOSAL (owned by Marcus). Advance it to NEGOTIATION first.
+      const advanceRes = await request(app)
+        .patch(`/api/deals/${DEALS.d3}/stage`)
+        .set('Authorization', `Bearer ${rep3Token}`)
+        .send({ stage: DealStage.NEGOTIATION });
+      expect(advanceRes.status).toBe(200);
+      expect(advanceRes.body.data.stage).toBe(DealStage.NEGOTIATION);
+
+      // Now test: Missing reason
+      const res1 = await request(app)
+        .patch(`/api/deals/${DEALS.d3}/stage`)
+        .set('Authorization', `Bearer ${rep3Token}`)
+        .send({ stage: DealStage.LOST });
+
+      expect(res1.status).toBe(400);
+      expect(res1.body.success).toBe(false);
+      expect(res1.body.message).toContain('A non-empty reason is required when marking a deal as Lost');
+
+      // Whitespace-only reason
+      const res2 = await request(app)
+        .patch(`/api/deals/${DEALS.d3}/stage`)
+        .set('Authorization', `Bearer ${rep3Token}`)
+        .send({ stage: DealStage.LOST, reason: '     ' });
+
+      expect(res2.status).toBe(400);
+      expect(res2.body.success).toBe(false);
+      expect(res2.body.message).toContain('A non-empty reason is required when marking a deal as Lost');
+    });
+
+    it('33c. should reject terminal transitions (WON/LOST) from NEW stage with 400', async () => {
+      // d7 is NEW
+      const resWon = await request(app)
+        .patch(`/api/deals/${DEALS.d7}/stage`)
+        .set('Authorization', `Bearer ${rep1Token}`)
+        .send({ stage: DealStage.WON });
+      expect(resWon.status).toBe(400);
+      expect(resWon.body.message).toContain('Moves must be exactly one step');
+
+      const resLost = await request(app)
+        .patch(`/api/deals/${DEALS.d7}/stage`)
+        .set('Authorization', `Bearer ${rep1Token}`)
+        .send({ stage: DealStage.LOST, reason: 'Premature drop' });
+      expect(resLost.status).toBe(400);
+      expect(resLost.body.message).toContain('Moves must be exactly one step');
+    });
+
+    it('33d. should reject terminal transitions (WON/LOST) from QUALIFIED stage with 400', async () => {
+      // d2 is QUALIFIED
+      const resWon = await request(app)
+        .patch(`/api/deals/${DEALS.d2}/stage`)
+        .set('Authorization', `Bearer ${rep2Token}`)
+        .send({ stage: DealStage.WON });
+      expect(resWon.status).toBe(400);
+      expect(resWon.body.message).toContain('Moves must be exactly one step');
+
+      const resLost = await request(app)
+        .patch(`/api/deals/${DEALS.d2}/stage`)
+        .set('Authorization', `Bearer ${rep2Token}`)
+        .send({ stage: DealStage.LOST, reason: 'Lead went cold' });
+      expect(resLost.status).toBe(400);
+      expect(resLost.body.message).toContain('Moves must be exactly one step');
+    });
+
+    it('33e. should reject terminal transitions (WON/LOST) from PROPOSAL stage with 400', async () => {
+      // d8 is PROPOSAL
+      const resWon = await request(app)
+        .patch(`/api/deals/${DEALS.d8}/stage`)
+        .set('Authorization', `Bearer ${rep2Token}`)
+        .send({ stage: DealStage.WON });
+      expect(resWon.status).toBe(400);
+      expect(resWon.body.message).toContain('Moves must be exactly one step');
+
+      const resLost = await request(app)
+        .patch(`/api/deals/${DEALS.d8}/stage`)
+        .set('Authorization', `Bearer ${rep2Token}`)
+        .send({ stage: DealStage.LOST, reason: 'Proposal declined' });
+      expect(resLost.status).toBe(400);
+      expect(resLost.body.message).toContain('Moves must be exactly one step');
+    });
+
+    it('33f. should reject backward transition of more than 1 step with 400', async () => {
+      // d3 was advanced to NEGOTIATION in test 33b. Attempting jump back to QUALIFIED (2 steps).
+      const res = await request(app)
+        .patch(`/api/deals/${DEALS.d3}/stage`)
+        .set('Authorization', `Bearer ${rep3Token}`)
+        .send({
+          stage: DealStage.QUALIFIED,
+          reason: 'Attempting invalid multi-step backward move',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Moves must be exactly one step');
+    });
   });
 
   // ==========================================================================
@@ -721,6 +945,25 @@ describe('Phase 5: Deals & Lifecycle State Machine Integration Tests', { timeout
       // Verify DealHistory records REOPENED action
       const history = await prisma.dealHistory.findFirst({
         where: { dealId: DEALS.d11, type: 'REOPENED' },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(history?.actorId).toBe(USER_MANAGER_ID);
+    });
+
+    it('35b. should allow Manager to reopen a LOST closed deal back to its previousStage (NEGOTIATION)', async () => {
+      // d6 is LOST with previousStage = NEGOTIATION
+      const res = await request(app)
+        .post(`/api/deals/${DEALS.d6}/reopen`)
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.stage).toBe(DealStage.NEGOTIATION);
+      expect(res.body.data.closedAt).toBeNull();
+      expect(res.body.data.previousStage).toBe(DealStage.NEGOTIATION);
+
+      const history = await prisma.dealHistory.findFirst({
+        where: { dealId: DEALS.d6, type: 'REOPENED' },
         orderBy: { createdAt: 'desc' },
       });
       expect(history?.actorId).toBe(USER_MANAGER_ID);

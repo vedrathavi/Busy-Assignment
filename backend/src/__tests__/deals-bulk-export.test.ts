@@ -57,6 +57,14 @@ describe('Phase 7: Bulk Operations & Pipeline CSV Export Integration Tests', { t
     '30000000-0000-4000-8000-000000000018',
   ];
 
+  const seededCollaborators = [
+    { dealId: DEALS.d3, userId: USER_REP1_ID },
+    { dealId: DEALS.d3, userId: USER_REP2_ID },
+    { dealId: DEALS.d4, userId: USER_REP2_ID },
+    { dealId: DEALS.d8, userId: USER_REP3_ID },
+    { dealId: DEALS.d10, userId: USER_REP1_ID },
+  ];
+
   const resetDeals = async () => {
     await prisma.$transaction([
       prisma.dealHistory.deleteMany({
@@ -114,6 +122,14 @@ describe('Phase 7: Bulk Operations & Pipeline CSV Export Integration Tests', { t
         data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP2_ID, closedAt: null, previousStage: null, deletedAt: null },
       }),
     ]);
+
+    for (const c of seededCollaborators) {
+      await prisma.dealCollaborator.upsert({
+        where: { dealId_userId: { dealId: c.dealId, userId: c.userId } },
+        create: c,
+        update: {},
+      });
+    }
   };
 
   beforeAll(async () => {
@@ -175,7 +191,7 @@ describe('Phase 7: Bulk Operations & Pipeline CSV Export Integration Tests', { t
       expect(history1[0].newOwnerId).toBe(USER_REP2_ID);
     });
 
-    it('2. should preserve collaborators when deals are bulk reassigned', async () => {
+    it('2. should automatically remove new owner from collaborators while preserving other collaborators on bulk reassign', async () => {
       // Deal d3 is owned by Marcus (REP3) and has Alex & Priya as collaborators
       const collaboratorsBefore = await prisma.dealCollaborator.findMany({
         where: { dealId: DEALS.d3 },
@@ -187,17 +203,18 @@ describe('Phase 7: Bulk Operations & Pipeline CSV Export Integration Tests', { t
         .set('Authorization', `Bearer ${managerToken}`)
         .send({
           dealIds: [DEALS.d3],
-          ownerId: USER_REP1_ID, // Reassign to Alex
+          ownerId: USER_REP1_ID, // Reassign to Alex (who was a collaborator)
         });
 
       expect(res.status).toBe(200);
       expect(res.body.results[0].status).toBe('success');
 
-      // Collaborators must still exist
+      // Alex is now the owner and automatically removed from collaborators; Priya remains
       const collaboratorsAfter = await prisma.dealCollaborator.findMany({
         where: { dealId: DEALS.d3 },
       });
-      expect(collaboratorsAfter.length).toBe(2);
+      expect(collaboratorsAfter.length).toBe(1);
+      expect(collaboratorsAfter[0].userId).toBe(USER_REP2_ID);
     });
 
     it('3. should reject Sales Rep attempting to bulk reassign with 403 Forbidden', async () => {

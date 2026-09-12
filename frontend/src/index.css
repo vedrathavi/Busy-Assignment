@@ -101,6 +101,26 @@
   * {
     border-color: hsl(var(--border));
   }
+  *:focus-visible {
+    outline: none;
+  }
+  input, button, textarea, select {
+    outline: none;
+  }
+  input:focus,
+  input:focus-visible,
+  textarea:focus,
+  textarea:focus-visible,
+  select:focus,
+  select:focus-visible {
+    outline: none !important;
+  }
+  input.bg-transparent,
+  input[type="text"].bg-transparent {
+    border: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));

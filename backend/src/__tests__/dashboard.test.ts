@@ -46,6 +46,15 @@ describe('Phase 9: Dashboard Pipeline Metrics & Analytics Integration Tests', { 
   let rep1Token: string; // Alex
   let rep2Token: string; // Priya
 
+  const seededCollaborators = [
+    { dealId: DEALS.d3, userId: USER_REP1_ID },
+    { dealId: DEALS.d3, userId: USER_REP2_ID },
+    { dealId: DEALS.d4, userId: USER_REP2_ID },
+    { dealId: DEALS.d8, userId: USER_REP3_ID },
+    { dealId: DEALS.d10, userId: USER_REP1_ID },
+    { dealId: DEALS.d13, userId: USER_REP1_ID },
+  ];
+
   const resetDeals = async () => {
     await prisma.$transaction([
       prisma.dealHistory.deleteMany({
@@ -62,32 +71,88 @@ describe('Phase 9: Dashboard Pipeline Metrics & Analytics Integration Tests', { 
       prisma.deal.deleteMany({
         where: { id: { notIn: ALL_SEEDED_DEAL_IDS } },
       }),
-      // Restore closedAt / stages for seed deals in case earlier test suites modified them
+      // Restore stages, owners, and closedAt for all seed deals
       prisma.deal.update({
-        where: { id: DEALS.d5 },
-        data: { stage: DealStage.WON, closedAt: new Date('2026-08-20T16:00:00.000Z'), deletedAt: null },
+        where: { id: DEALS.d1 },
+        data: { stage: DealStage.NEW, ownerId: USER_REP1_ID, value: '125000.00', closedAt: null, previousStage: null, deletedAt: null },
       }),
       prisma.deal.update({
-        where: { id: DEALS.d11 },
-        data: { stage: DealStage.WON, closedAt: new Date('2026-08-30T10:00:00.000Z'), deletedAt: null },
+        where: { id: DEALS.d2 },
+        data: { stage: DealStage.QUALIFIED, ownerId: USER_REP2_ID, value: '84000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d3 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP3_ID, value: '240000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d4 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP1_ID, value: '350000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d5 },
+        data: { stage: DealStage.WON, ownerId: USER_REP2_ID, value: '195000.00', closedAt: new Date('2026-08-20T16:00:00.000Z'), previousStage: DealStage.NEGOTIATION, deletedAt: null },
       }),
       prisma.deal.update({
         where: { id: DEALS.d6 },
-        data: { stage: DealStage.LOST, closedAt: new Date('2026-07-15T11:30:00.000Z'), deletedAt: null },
+        data: { stage: DealStage.LOST, ownerId: USER_REP3_ID, value: '160000.00', closedAt: new Date('2026-07-15T11:30:00.000Z'), previousStage: DealStage.NEGOTIATION, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d7 },
+        data: { stage: DealStage.NEW, ownerId: USER_REP1_ID, value: '95000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d8 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP2_ID, value: '145000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d9 },
+        data: { stage: DealStage.QUALIFIED, ownerId: USER_REP3_ID, value: '68000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d10 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP2_ID, value: '110000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d11 },
+        data: { stage: DealStage.WON, ownerId: USER_REP1_ID, value: '280000.00', closedAt: new Date('2026-08-30T10:00:00.000Z'), previousStage: DealStage.NEGOTIATION, deletedAt: null },
       }),
       prisma.deal.update({
         where: { id: DEALS.d12 },
-        data: { stage: DealStage.LOST, closedAt: new Date('2026-08-05T14:00:00.000Z'), deletedAt: null },
+        data: { stage: DealStage.LOST, ownerId: USER_REP1_ID, value: '52000.00', closedAt: new Date('2026-08-05T14:00:00.000Z'), previousStage: DealStage.PROPOSAL, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d13 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP3_ID, value: '310000.00', closedAt: null, previousStage: DealStage.NEGOTIATION, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d14 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP1_ID, value: '75000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d15 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP1_ID, value: '88000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d16 },
+        data: { stage: DealStage.QUALIFIED, ownerId: USER_REP2_ID, value: '130000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d17 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP3_ID, value: '215000.00', closedAt: null, previousStage: null, deletedAt: null },
       }),
       prisma.deal.update({
         where: { id: DEALS.d18_softDeleted },
-        data: { stage: DealStage.NEW, closedAt: null, deletedAt: new Date('2026-09-08T10:00:00.000Z') },
-      }),
-      prisma.deal.updateMany({
-        where: { id: { in: [DEALS.d1, DEALS.d2, DEALS.d3, DEALS.d4, DEALS.d7, DEALS.d8, DEALS.d9, DEALS.d10, DEALS.d13, DEALS.d14, DEALS.d15, DEALS.d16, DEALS.d17] } },
-        data: { closedAt: null, deletedAt: null },
+        data: { stage: DealStage.NEW, ownerId: USER_REP2_ID, value: '45000.00', closedAt: null, deletedAt: new Date('2026-09-08T10:00:00.000Z') },
       }),
     ]);
+
+    for (const c of seededCollaborators) {
+      await prisma.dealCollaborator.upsert({
+        where: { dealId_userId: { dealId: c.dealId, userId: c.userId } },
+        create: c,
+        update: {},
+      });
+    }
   };
 
   beforeAll(async () => {

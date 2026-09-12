@@ -70,6 +70,14 @@ export class DealTransitionPolicy {
 
     if (isForward) {
       const isClosing = targetStage === DealStage.WON || targetStage === DealStage.LOST;
+      if (targetStage === DealStage.LOST) {
+        if (!reason || reason.trim().length === 0) {
+          return {
+            legal: false,
+            error: 'A non-empty reason is required when marking a deal as Lost',
+          };
+        }
+      }
       return {
         legal: true,
         isClosing,

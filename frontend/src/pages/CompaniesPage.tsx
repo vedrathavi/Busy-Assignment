@@ -521,20 +521,22 @@ export function CompaniesPage() {
                               >
                                 <FiEdit2 className="h-3.5 w-3.5" /> Edit
                               </DropdownMenuItem>
-                              {company.isArchived ? (
-                                <DropdownMenuItem
-                                  onClick={() => setRestoreCompanyTarget(company)}
-                                  className="text-xs gap-2 cursor-pointer text-emerald-700 focus:text-emerald-700"
-                                >
-                                  <FiRefreshCw className="h-3.5 w-3.5" /> Restore
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem
-                                  onClick={() => setArchiveCompanyTarget(company)}
-                                  className="text-xs gap-2 cursor-pointer text-destructive focus:text-destructive"
-                                >
-                                  <FiArchive className="h-3.5 w-3.5" /> Archive
-                                </DropdownMenuItem>
+                              {(isManager || (user?.id && company.ownerId === user.id)) && (
+                                company.isArchived ? (
+                                  <DropdownMenuItem
+                                    onClick={() => setRestoreCompanyTarget(company)}
+                                    className="text-xs gap-2 cursor-pointer text-emerald-700 focus:text-emerald-700"
+                                  >
+                                    <FiRefreshCw className="h-3.5 w-3.5" /> Restore
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem
+                                    onClick={() => setArchiveCompanyTarget(company)}
+                                    className="text-xs gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                  >
+                                    <FiArchive className="h-3.5 w-3.5" /> Archive
+                                  </DropdownMenuItem>
+                                )
                               )}
                             </DropdownMenuContent>
                           </DropdownMenu>

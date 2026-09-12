@@ -267,6 +267,16 @@ export class DealRepository {
     if (query.companyId) {
       filterConditions.push({ companyId: query.companyId });
     }
+    if (query.isReopened === true) {
+      filterConditions.push({
+        closedAt: null,
+        previousStage: { not: null },
+      });
+    } else if (query.isReopened === false) {
+      filterConditions.push({
+        previousStage: null,
+      });
+    }
     if (query.search) {
       filterConditions.push({
         OR: [
@@ -393,14 +403,24 @@ export class DealRepository {
 
     return prisma.$transaction(
       async (tx) => {
-        const updatedDeal = await tx.deal.update({
-          where: { id },
-          data: updatePayload,
-          select: dealSelect,
-        });
-
-        // If owner changed, record OWNER_CHANGED in immutable history and sync notification recipient
+        // If owner changed, enforce invariant that owner cannot be a collaborator,
+        // record OWNER_CHANGED in immutable history, and sync notification recipient
         if (data.ownerId && oldOwnerId && data.ownerId !== oldOwnerId) {
+          // Invariant: Deal owner can never be a collaborator.
+          // If the new owner was previously a collaborator, remove them in this transaction.
+          await tx.dealCollaborator.deleteMany({
+            where: {
+              dealId: id,
+              userId: data.ownerId,
+            },
+          });
+
+          const updatedDeal = await tx.deal.update({
+            where: { id },
+            data: updatePayload,
+            select: dealSelect,
+          });
+
           await tx.dealHistory.create({
             data: {
               dealId: id,
@@ -422,7 +442,15 @@ export class DealRepository {
               data: { userId: data.ownerId },
             });
           }
+
+          return mapDealToResponse(updatedDeal);
         }
+
+        const updatedDeal = await tx.deal.update({
+          where: { id },
+          data: updatePayload,
+          select: dealSelect,
+        });
 
         return mapDealToResponse(updatedDeal);
       },
@@ -636,8 +664,9 @@ export class DealRepository {
   }
 
   /**
-   * Atomically reassigns a single deal's owner and records an OWNER_CHANGED history event.
-   * Preserves all existing collaborators intact.
+   * Atomically reassigns a single deal's owner, removes the new owner from collaborators
+   * if previously a collaborator (enforcing the owner-not-collaborator invariant),
+   * and records an OWNER_CHANGED history event.
    */
   async reassignSingleDealWithHistory(
     dealId: string,
@@ -646,6 +675,15 @@ export class DealRepository {
     actorId: string
   ): Promise<DealResponse> {
     return prisma.$transaction(async (tx) => {
+      // Invariant: Deal owner can never be a collaborator.
+      // If the new owner was previously a collaborator, remove them in this transaction.
+      await tx.dealCollaborator.deleteMany({
+        where: {
+          dealId,
+          userId: newOwnerId,
+        },
+      });
+
       const updatedDeal = await tx.deal.update({
         where: { id: dealId },
         data: {

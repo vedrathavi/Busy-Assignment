@@ -224,20 +224,50 @@ To honor both **Goal 3** (*"Deals can be created, edited, and deleted"*) and **G
 | Capability | Sales Rep | Sales Manager | Enforcement Point & Repository Rule |
 | :--- | :---: | :---: | :--- |
 | **View Companies** | **Scoped only**: companies they own, OR associated with deals they own/collaborate on | All team companies | `CompanyRepository`: `WHERE teamId = :teamId AND (ownerId = :userId OR id IN (SELECT companyId FROM "Deal" WHERE (ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId)) AND deletedAt IS NULL))` |
-| **Create Company** | Direct (self-assigned owner) | Direct (can assign any rep) | `CompanyService` validation |
+| **Create Company** | Direct (self-assigned owner) | Direct (must explicitly assign team Sales Rep) | `CompanyService` validation (enforces Sales Rep owner) |
 | **Edit / Archive Company** | Owned companies only | All team companies | `CompanyPolicy.canModify()` |
 | **View Active Deals** | **Scoped only**: deals they own, OR collaborate on | All team deals | `DealRepository`: `WHERE deletedAt IS NULL AND (ownerId = :userId OR id IN (SELECT dealId FROM "DealCollaborator" WHERE userId = :userId))` |
 | **View Deleted Deals (Trash)**| **Scoped only**: deleted deals they owned or collaborated on | All team deleted deals | `DealRepository`: `WHERE deletedAt IS NOT NULL AND ...` (scoped by role) |
-| **Create Deal** | Direct on accessible companies | Direct on any team company | `DealService` validation (blocks creation on archived companies) |
+| **Create Deal** | Direct on accessible companies (self-assigned owner) | Direct on any team company (must explicitly assign team Sales Rep) | `DealService` & `DealPolicy.canCreate` (enforces Sales Rep owner, blocks creation on archived companies) |
 | **Edit Deal Details** | Owned or collaborated deals | All team deals | `DealPolicy.canModify()` (blocks edits on soft-deleted deals) |
 | **Advance / Move Back Deal** | Owned or collaborated deals | All team deals | `DealTransitionPolicy` (enforces 1-step, reason on backward, closed restrictions) |
 | **Delete Deal** | **Deal Owner only** (on owned deals) | **Allowed on any deal** in team | `DealPolicy.canDelete()`: Sets `deletedAt` & `deletedById`; appends immutable `DELETED` event in `DealHistory`. Physical row and history remain intact. |
 | **Reopen Closed Deal** | ❌ Forbidden | ✅ Allowed (returns to `previousStage`) | `DealTransitionPolicy.canReopen()` (Manager role required) |
-| **Reassign Deal Owner** | ❌ Forbidden | ✅ Allowed (single & bulk) | `DealPolicy.canReassign()` (Manager role required) |
+| **Reassign Deal Owner** | ❌ Forbidden | ✅ Allowed (single & bulk) | `DealPolicy.canReassign()` (Manager role required); atomically cleans up new owner from `DealCollaborator` relation in database transaction |
 | **Manage Collaborators** | Allowed **only if rep is Deal Owner** (collaborators cannot manage other collaborators) | **Allowed on any deal** in team | `DealPolicy.canManageCollaborators()`: Only Sales Manager OR Deal Owner can add/remove collaborators (`POST /api/deals/:id/collaborators` and `DELETE /api/deals/:id/collaborators/:userId`) |
 | **Bulk Actions & CSV** | CSV export for accessible deals | Bulk reassign, bulk advance, CSV | `DealService` & `BulkDealService` (operates on active open deals) |
 | **Overdue Alerts** | View & dismiss own overdue deals | View all team overdue deals | `AlertPolicy` & `AlertRepository` (filtered to `deletedAt IS NULL`) |
 | **Audit History** | Read accessible deal timeline | Read all deal timelines | Append-only: `DealHistory` is permanent; soft deletion appends `DELETED`; zero update/delete API routes |
+
+### Deal & Company Ownership Creation Model
+
+Deal ownership follows the same creation principle as company ownership: Managers explicitly select a Sales Rep as Deal Owner, while Sales Reps automatically own deals they create. A Manager is never automatically assigned as Deal Owner merely because they created the deal.
+
+### Deal Lifecycle State Machine
+
+The deal stage progression follows a strict, assignment-mandated linear state machine enforced in `DealTransitionPolicy`:
+
+```
+NEW → QUALIFIED → PROPOSAL → NEGOTIATION → WON (Closed / Terminal)
+                                          → LOST (Closed / Terminal, requires non-empty reason)
+```
+
+**Core Lifecycle Principles:**
+
+1. **Assignment-Defined Forward Progression**: Exactly 1 step forward at a time (`NEW → QUALIFIED → PROPOSAL → NEGOTIATION`). Multi-step skips (e.g., `NEW → PROPOSAL`) are rejected with `400 Bad Request`.
+2. **Terminal Closed Outcomes (`WON` and `LOST`)**:
+   - `WON` and `LOST` can **only** be reached from `NEGOTIATION`.
+   - Attempting to mark a deal as `WON` or `LOST` directly from `NEW`, `QUALIFIED`, or `PROPOSAL` is rejected with `400 Bad Request` on the server and blocked in the UI. This strictly reflects the assignment specification defining Won and Lost as outcomes of the Negotiation stage.
+   - Both `WON` and `LOST` are closed, terminal states. Once closed, standard transitions are disabled and the deal can only be re-activated via Manager Reopen.
+3. **Mandatory Lost Reason**: Transitioning to `LOST` strictly requires a non-empty `reason` string (`reason.trim().length > 0`). Empty or whitespace-only inputs are rejected with `400 Bad Request` by the server and enforced via a dedicated confirmation dialog in the UI. The loss reason is permanently stored in `DealHistory`.
+4. **Backward Progression**: Exactly 1 step backward (e.g., `NEGOTIATION → PROPOSAL`, `PROPOSAL → QUALIFIED`, `QUALIFIED → NEW`) and requires a mandatory non-empty reason explaining the regression. `NEW` deals cannot move backward. Multi-step regressions are rejected with `400 Bad Request`.
+5. **Server-Side Persisted `previousStage` for Reopen**:
+   - When a deal is closed (`WON` or `LOST`), the backend atomically records the pre-close stage in `Deal.previousStage` and timestamps `closedAt: new Date()`.
+   - When a Sales Manager reopens the deal (`POST /api/deals/:id/reopen`), the backend uses the server-persisted `deal.previousStage` value, verifies it represents a valid open stage, restores `deal.stage = deal.previousStage`, clears `closedAt = null`, and logs a `REOPENED` event in `DealHistory`.
+   - **Architectural Distinction**: In the current assignment lifecycle, because Won and Lost are only reached from `NEGOTIATION`, all legitimately closed deals have `previousStage = NEGOTIATION` and therefore reopen to `NEGOTIATION`. This is a natural consequence of the assignment rules, **not** a hard-coded assumption in the reopen service. The service dynamically relies on `Deal.previousStage`, ensuring complete backend authority and forward extensibility.
+6. **Company Archive/Restore vs. Deal Reopen**: These are distinct concepts:
+   - **Deal Reopen**: Restores a closed deal (`WON`/`LOST`) to its previous active pipeline stage.
+   - **Company Archive / Restore**: Toggles company operational status (`ACTIVE ↔ ARCHIVED`) without altering associated deal stages or histories.
 
 ---
 

@@ -62,6 +62,13 @@ export const dealQuerySchema = z
     ownerId: z.string().uuid('Invalid owner ID format').optional(),
     companyId: z.string().uuid('Invalid company ID format').optional(),
     search: z.string().trim().optional(),
+    isReopened: z
+      .preprocess((val) => {
+        if (val === 'true' || val === true) return true;
+        if (val === 'false' || val === false) return false;
+        return undefined;
+      }, z.boolean().optional())
+      .optional(),
     page: z.coerce
       .number()
       .int('Page must be an integer')

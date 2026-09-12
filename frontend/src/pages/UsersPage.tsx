@@ -64,7 +64,7 @@ export function UsersPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search team members by name or email..."
-                className="pl-9 h-9 text-xs bg-white border-[#eceae4]"
+                className="pl-9 h-9 text-xs bg-white border-[#eceae4] focus-visible:border-[rgba(28,28,28,0.4)] focus-visible:ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
               />
             </div>
             <div className="flex items-center gap-1.5 w-full sm:w-auto">

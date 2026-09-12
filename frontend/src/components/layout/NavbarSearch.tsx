@@ -9,6 +9,7 @@ import {
   FiArrowRight,
   FiLoader,
   FiX,
+  FiCornerDownLeft,
 } from 'react-icons/fi';
 import { useQuery } from '@tanstack/react-query';
 import { getDealsApi } from '@/features/deals/deals.api';
@@ -202,7 +203,7 @@ export function NavbarSearch() {
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder="Search deals, companies, navigate..."
-          className="flex-1 bg-transparent text-xs font-normal text-[#1c1c1c] placeholder:text-[#5f5f5d]/70 outline-none focus:outline-none focus:ring-0"
+          className="flex-1 bg-transparent border-0 border-none text-xs font-normal text-[#1c1c1c] placeholder:text-[#5f5f5d]/70 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 shadow-none focus:shadow-none"
           aria-label="Search deals, companies, or commands"
         />
 
@@ -219,9 +220,10 @@ export function NavbarSearch() {
           </button>
         )}
 
-        <kbd className="pointer-events-none hidden rounded-[4px] bg-[#eceae4] px-1.5 py-0.5 text-[0.625rem] font-medium text-[#1c1c1c] sm:inline-block">
-          ⌘K
-        </kbd>
+        <span className="pointer-events-none hidden items-center gap-1 rounded-[4px] bg-[#eceae4]/80 px-1.5 py-0.5 text-[0.625rem] font-medium text-[#5f5f5d] sm:inline-flex select-none">
+          <FiCornerDownLeft className="h-2.5 w-2.5 text-[#5f5f5d]" />
+          <span>Quick Find</span>
+        </span>
       </div>
 
       {/* Dropdown Menu attached directly below search bar */}

@@ -30,7 +30,13 @@ export class DealService {
   async createDeal(user: AuthUser, input: CreateDealInput): Promise<DealResponse> {
     // 1. Authorization check for ownership assignment
     if (!dealPolicy.canCreate(user, input.ownerId)) {
-      throw new ForbiddenError('Sales reps cannot assign deals to other users');
+      if (user.role === UserRole.SALES_REP) {
+        throw new ForbiddenError('Sales reps cannot assign deals to other users');
+      }
+      if (user.role === UserRole.MANAGER && input.ownerId === user.id) {
+        throw new BadRequestError('Deal owner must have the SALES_REP role');
+      }
+      throw new ForbiddenError('You do not have permission to create this deal');
     }
 
     // 2. Validate Company: must exist in team and cannot be archived
@@ -50,23 +56,34 @@ export class DealService {
     }
 
     // 3. Determine and validate target owner
-    let targetOwnerId = user.id;
+    let targetOwnerId: string;
 
-    if (input.ownerId && input.ownerId !== user.id) {
+    if (user.role === UserRole.MANAGER) {
+      if (!input.ownerId || !input.ownerId.trim()) {
+        throw new BadRequestError('Managers must explicitly assign an owning sales rep');
+      }
+
+      // Validate that target owner exists, belongs to caller's team & org, and has role SALES_REP
       const targetUser = await prisma.user.findFirst({
         where: {
           id: input.ownerId,
           teamId: user.teamId,
           organizationId: user.organizationId,
-          role: UserRole.SALES_REP,
         },
       });
 
       if (!targetUser) {
-        throw new BadRequestError('Target owner must be a valid Sales Rep in your team');
+        throw new BadRequestError('Target owner does not exist or does not belong to your team');
+      }
+
+      if (targetUser.role !== UserRole.SALES_REP) {
+        throw new BadRequestError('Deal owner must have the SALES_REP role');
       }
 
       targetOwnerId = targetUser.id;
+    } else {
+      // Sales Rep automatically becomes the deal owner
+      targetOwnerId = user.id;
     }
 
     return dealRepository.createWithHistory(

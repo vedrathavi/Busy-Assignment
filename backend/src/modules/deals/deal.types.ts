@@ -119,6 +119,7 @@ export interface DealListQuery {
   ownerId?: string;
   companyId?: string;
   search?: string;
+  isReopened?: boolean;
   page: number;
   pageSize: number;
   limit: number;

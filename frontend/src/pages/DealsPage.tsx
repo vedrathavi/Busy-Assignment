@@ -98,12 +98,13 @@ const SORT_OPTIONS = [
 
 export function DealsPage() {
   const navigate = useNavigate();
-  const { isManager } = useAuth();
+  const { user, isManager } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Read URL query params
   const urlSearch = searchParams.get('search') || '';
   const urlStage = (searchParams.get('stage') as DealStage | 'ALL') || 'ALL';
+  const urlReopened = searchParams.get('isReopened') === 'true';
   const urlOwner = searchParams.get('ownerId') || undefined;
   const urlCompany = searchParams.get('companyId') || undefined;
   const urlSortBy = (searchParams.get('sortBy') as 'value' | 'expectedCloseDate' | 'updatedAt') || 'updatedAt';
@@ -113,6 +114,7 @@ export function DealsPage() {
   const [searchInput, setSearchInput] = useState(urlSearch);
   const debouncedSearch = useDebounce(searchInput, 250);
   const [selectedStage, setSelectedStage] = useState<DealStage | 'ALL'>(urlStage);
+  const [isReopenedOnly, setIsReopenedOnly] = useState(urlReopened);
   const [sortBy, setSortBy] = useState<'value' | 'expectedCloseDate' | 'updatedAt'>(urlSortBy);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(urlSortOrder);
   const [page, setPage] = useState(urlPage);
@@ -138,16 +140,22 @@ export function DealsPage() {
     } else {
       params.delete('stage');
     }
+    if (isReopenedOnly) {
+      params.set('isReopened', 'true');
+    } else {
+      params.delete('isReopened');
+    }
     params.set('sortBy', sortBy);
     params.set('sortOrder', sortOrder);
     params.set('page', page.toString());
     setSearchParams(params, { replace: true });
-  }, [debouncedSearch, selectedStage, sortBy, sortOrder, page]);
+  }, [debouncedSearch, selectedStage, isReopenedOnly, sortBy, sortOrder, page]);
 
   const queryParams = useMemo(
     () => ({
       search: debouncedSearch.trim() || undefined,
       stage: selectedStage,
+      isReopened: isReopenedOnly ? true : undefined,
       ownerId: urlOwner,
       companyId: urlCompany,
       page,
@@ -155,7 +163,7 @@ export function DealsPage() {
       sortBy,
       sortOrder,
     }),
-    [debouncedSearch, selectedStage, urlOwner, urlCompany, page, sortBy, sortOrder]
+    [debouncedSearch, selectedStage, isReopenedOnly, urlOwner, urlCompany, page, sortBy, sortOrder]
   );
 
   const { data, isLoading, isError, error, refetch, isFetching } = useDeals(queryParams);
@@ -193,6 +201,10 @@ export function DealsPage() {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isManager && !dealOwnerId.trim()) {
+      setCreateError('Please select a deal owner.');
+      return;
+    }
     setCreateError(null);
     try {
       await createDealMutation.mutateAsync({
@@ -212,7 +224,7 @@ export function DealsPage() {
   };
 
   const handleBulkAdvance = async () => {
-    if (selectedDealIds.length === 0) return;
+    if (!isManager || selectedDealIds.length === 0) return;
     setBulkError(null);
     try {
       await bulkAdvanceMutation.mutateAsync(selectedDealIds);
@@ -227,7 +239,7 @@ export function DealsPage() {
 
   const handleBulkReassignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedDealIds.length === 0 || !bulkReassignOwnerId.trim()) return;
+    if (!isManager || selectedDealIds.length === 0 || !bulkReassignOwnerId.trim()) return;
     setBulkError(null);
     try {
       await bulkReassignMutation.mutateAsync({
@@ -387,35 +399,56 @@ export function DealsPage() {
           </div>
         </div>
 
-        {/* Stage Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-[#eceae4]/70">
-          <span className="text-[0.6875rem] font-medium text-[#5f5f5d] uppercase mr-1">Stage:</span>
-          {STAGE_FILTERS.map((filter) => {
-            const isSelected = selectedStage === filter.value;
-            return (
-              <Button
-                key={filter.value}
-                variant={isSelected ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setSelectedStage(filter.value);
-                  setPage(1);
-                }}
-                className={`h-7 text-xs font-normal rounded-[6px] px-2.5 ${
-                  isSelected
-                    ? 'bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset'
-                    : 'border-[#eceae4] text-[#5f5f5d] hover:bg-[#eceae4] hover:text-[#1c1c1c]'
-                }`}
-              >
-                {filter.label}
-              </Button>
-            );
-          })}
+        {/* Stage Filter Pills & Reopened Filter */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#eceae4]/70">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[0.6875rem] font-medium text-[#5f5f5d] uppercase mr-1">Stage:</span>
+            {STAGE_FILTERS.map((filter) => {
+              const isSelected = selectedStage === filter.value;
+              return (
+                <Button
+                  key={filter.value}
+                  variant={isSelected ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setSelectedStage(filter.value);
+                    setPage(1);
+                  }}
+                  className={`h-7 text-xs font-normal rounded-[6px] px-2.5 ${
+                    isSelected
+                      ? 'bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset'
+                      : 'border-[#eceae4] text-[#5f5f5d] hover:bg-[#eceae4] hover:text-[#1c1c1c]'
+                  }`}
+                >
+                  {filter.label}
+                </Button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant={isReopenedOnly ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setIsReopenedOnly((prev) => !prev);
+                setPage(1);
+              }}
+              className={`h-7 text-xs font-normal rounded-[6px] px-2.5 gap-1.5 ${
+                isReopenedOnly
+                  ? 'bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset'
+                  : 'border-[#eceae4] text-[#5f5f5d] hover:bg-[#eceae4] hover:text-[#1c1c1c]'
+              }`}
+            >
+              <FiRefreshCw className="h-3 w-3" />
+              <span>Reopened Deals</span>
+            </Button>
+          </div>
         </div>
       </Card>
 
-      {/* Floating Bulk Operations Toolbar */}
-      {selectedDealIds.length > 0 && (
+      {/* Floating Bulk Operations Toolbar (Managers Only) */}
+      {isManager && selectedDealIds.length > 0 && (
         <div className="sticky top-20 z-20 flex items-center justify-between rounded-[10px] border border-[#1c1c1c] bg-[#1c1c1c] px-4 py-2.5 text-[#fcfbf8] shadow-focus-soft animate-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="bg-[#fcfbf8] text-[#1c1c1c] font-semibold text-xs">
@@ -480,7 +513,7 @@ export function DealsPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6">
-              <TableSkeleton rows={5} columns={7} />
+              <TableSkeleton rows={5} columns={isManager ? 8 : 7} />
             </div>
           ) : isError ? (
             <div className="p-6">
@@ -516,15 +549,17 @@ export function DealsPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="border-b border-[#eceae4] bg-[#f7f4ed]/60 hover:bg-[#f7f4ed]/60">
-                    <TableHead className="w-10 px-3 text-center">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={handleSelectAll}
-                        className="rounded border-[#eceae4] text-[#1c1c1c] focus:ring-0 cursor-pointer"
-                        aria-label="Select all deals"
-                      />
-                    </TableHead>
+                    {isManager && (
+                      <TableHead className="w-10 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={handleSelectAll}
+                          className="rounded border-[#eceae4] text-[#1c1c1c] focus:ring-0 cursor-pointer"
+                          aria-label="Select all deals"
+                        />
+                      </TableHead>
+                    )}
                     <TableHead className="text-xs font-medium text-[#5f5f5d] uppercase tracking-wider py-3 px-4">
                       Deal & Company
                     </TableHead>
@@ -564,6 +599,8 @@ export function DealsPage() {
                           .toUpperCase()
                       : '—';
 
+                    const isReopened = deal.previousStage !== null && deal.closedAt === null;
+
                     return (
                       <TableRow
                         key={deal.id}
@@ -572,23 +609,36 @@ export function DealsPage() {
                           isSelected ? 'bg-[#eceae4]/40' : 'hover:bg-[#f7f4ed]/70'
                         }`}
                       >
-                        {/* Checkbox */}
-                        <TableCell className="w-10 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleDealSelection(deal.id)}
-                            className="rounded border-[#eceae4] text-[#1c1c1c] focus:ring-0 cursor-pointer"
-                            aria-label={`Select ${deal.title}`}
-                          />
-                        </TableCell>
+                        {/* Checkbox (Managers Only) */}
+                        {isManager && (
+                          <TableCell className="w-10 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleDealSelection(deal.id)}
+                              className="rounded border-[#eceae4] text-[#1c1c1c] focus:ring-0 cursor-pointer"
+                              aria-label={`Select ${deal.title}`}
+                            />
+                          </TableCell>
+                        )}
 
                         {/* Title & Company */}
                         <TableCell className="py-3 px-4">
                           <div className="flex flex-col">
-                            <span className="font-semibold text-sm text-[#1c1c1c] hover:underline">
-                              {deal.title}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-sm text-[#1c1c1c] hover:underline">
+                                {deal.title}
+                              </span>
+                              {isReopened && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[0.625rem] font-medium px-1.5 py-0 bg-amber-50 text-amber-800 border-amber-300 gap-1 rounded-[4px] shrink-0"
+                                >
+                                  <FiRefreshCw className="h-2.5 w-2.5" />
+                                  <span>Reopened</span>
+                                </Badge>
+                              )}
+                            </div>
                             {deal.company && (
                               <div className="flex items-center gap-1 text-xs text-[#5f5f5d] mt-0.5">
                                 <FiGlobe className="h-3 w-3" />
@@ -804,16 +854,26 @@ export function DealsPage() {
                 required
               />
             </div>
-            {isManager && (
+            {/* Deal Owner Assignment */}
+            {isManager ? (
               <div className="space-y-1.5">
-                <Label htmlFor="newDealOwner">Assign Owner (Optional)</Label>
+                <Label htmlFor="newDealOwner">Deal Owner *</Label>
                 <UserSelector
                   id="newDealOwner"
                   value={dealOwnerId}
                   onChange={setDealOwnerId}
                   allowedRoles={['SALES_REP']}
-                  placeholder="Defaults to you (manager)..."
+                  placeholder="Select Sales Representative..."
                 />
+                <p className="text-[11px] text-[#5f5f5d]">
+                  Managers must assign a Sales Representative as deal owner.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-[6px] bg-[#f7f4ed] p-2.5 text-xs text-[#5f5f5d] border border-[#eceae4]">
+                <p>
+                  <span className="font-medium text-[#1c1c1c]">Deal Owner:</span> You ({user?.name || 'Current User'}) will automatically be assigned as the deal owner.
+                </p>
               </div>
             )}
             <DialogFooter>

@@ -55,6 +55,15 @@ describe('Phase 8: Deal Search, Filtering, Sorting & Pagination Integration Test
   let rep2Token: string; // Priya
   let rep3Token: string; // Marcus
 
+  const seededCollaborators = [
+    { dealId: DEALS.d3, userId: USER_REP1_ID },
+    { dealId: DEALS.d3, userId: USER_REP2_ID },
+    { dealId: DEALS.d4, userId: USER_REP2_ID },
+    { dealId: DEALS.d8, userId: USER_REP3_ID },
+    { dealId: DEALS.d10, userId: USER_REP1_ID },
+    { dealId: DEALS.d13, userId: USER_REP1_ID },
+  ];
+
   const resetDeals = async () => {
     await prisma.$transaction([
       prisma.dealHistory.deleteMany({
@@ -71,7 +80,88 @@ describe('Phase 8: Deal Search, Filtering, Sorting & Pagination Integration Test
       prisma.deal.deleteMany({
         where: { id: { notIn: ALL_SEEDED_DEAL_IDS } },
       }),
+      // Restore stages, owners, and closedAt for all seed deals
+      prisma.deal.update({
+        where: { id: DEALS.d1 },
+        data: { stage: DealStage.NEW, ownerId: USER_REP1_ID, value: '125000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d2 },
+        data: { stage: DealStage.QUALIFIED, ownerId: USER_REP2_ID, value: '84000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d3 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP3_ID, value: '240000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d4 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP1_ID, value: '350000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d5 },
+        data: { stage: DealStage.WON, ownerId: USER_REP2_ID, value: '195000.00', closedAt: new Date('2026-08-20T16:00:00.000Z'), previousStage: DealStage.NEGOTIATION, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d6 },
+        data: { stage: DealStage.LOST, ownerId: USER_REP3_ID, value: '160000.00', closedAt: new Date('2026-07-15T11:30:00.000Z'), previousStage: DealStage.NEGOTIATION, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d7 },
+        data: { stage: DealStage.NEW, ownerId: USER_REP1_ID, value: '95000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d8 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP2_ID, value: '145000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d9 },
+        data: { stage: DealStage.QUALIFIED, ownerId: USER_REP3_ID, value: '68000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d10 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP2_ID, value: '110000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d11 },
+        data: { stage: DealStage.WON, ownerId: USER_REP1_ID, value: '280000.00', closedAt: new Date('2026-08-30T10:00:00.000Z'), previousStage: DealStage.NEGOTIATION, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d12 },
+        data: { stage: DealStage.LOST, ownerId: USER_REP1_ID, value: '52000.00', closedAt: new Date('2026-08-05T14:00:00.000Z'), previousStage: DealStage.PROPOSAL, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d13 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP3_ID, value: '310000.00', closedAt: null, previousStage: DealStage.NEGOTIATION, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d14 },
+        data: { stage: DealStage.NEGOTIATION, ownerId: USER_REP1_ID, value: '75000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d15 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP1_ID, value: '88000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d16 },
+        data: { stage: DealStage.QUALIFIED, ownerId: USER_REP2_ID, value: '130000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d17 },
+        data: { stage: DealStage.PROPOSAL, ownerId: USER_REP3_ID, value: '215000.00', closedAt: null, previousStage: null, deletedAt: null },
+      }),
+      prisma.deal.update({
+        where: { id: DEALS.d18_softDeleted },
+        data: { stage: DealStage.NEW, ownerId: USER_REP2_ID, value: '45000.00', closedAt: null, deletedAt: new Date('2026-09-08T10:00:00.000Z') },
+      }),
     ]);
+
+    for (const c of seededCollaborators) {
+      await prisma.dealCollaborator.upsert({
+        where: { dealId_userId: { dealId: c.dealId, userId: c.userId } },
+        create: c,
+        update: {},
+      });
+    }
   };
 
   beforeAll(async () => {
@@ -542,6 +632,37 @@ describe('Phase 8: Deal Search, Filtering, Sorting & Pagination Integration Test
       const stages = res.body.data.map((d: any) => d.stage);
       expect(stages).toContain(DealStage.WON);
       expect(stages).toContain(DealStage.LOST);
+    });
+
+    it('31. should filter deals by isReopened=true returning only reopened deals', async () => {
+      // In seed data: d13 is the reopened deal (previousStage: NEGOTIATION, closedAt: null)
+      const res = await request(app)
+        .get('/api/deals?isReopened=true')
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+      for (const d of res.body.data) {
+        expect(d.closedAt).toBeNull();
+        expect(d.previousStage).not.toBeNull();
+      }
+      const ids = res.body.data.map((d: any) => d.id);
+      expect(ids).toContain(DEALS.d13);
+    });
+
+    it('32. should filter deals by isReopened=false returning only non-reopened deals', async () => {
+      const res = await request(app)
+        .get('/api/deals?isReopened=false&pageSize=50')
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      for (const d of res.body.data) {
+        expect(d.previousStage).toBeNull();
+      }
+      const ids = res.body.data.map((d: any) => d.id);
+      expect(ids).not.toContain(DEALS.d13);
     });
   });
 });

@@ -4,14 +4,21 @@ import { AuthUser } from '../auth/auth.types';
 export class DealPolicy {
   /**
    * Evaluates if the user can create a deal with the specified owner.
-   * - Sales Rep can only create deals owned by themselves.
-   * - Manager can create and assign to any Sales Rep in their team.
+   * - A Sales Rep can only create a deal owned by themselves.
+   * - A Manager must assign ownership to a Sales Rep (cannot assign to themselves).
    */
   canCreate(user: AuthUser, targetOwnerId?: string): boolean {
-    if (!targetOwnerId || targetOwnerId === user.id) {
+    if (user.role === UserRole.SALES_REP) {
+      return !targetOwnerId || targetOwnerId === user.id;
+    }
+    if (user.role === UserRole.MANAGER) {
+      // Manager cannot assign themselves as deal owner
+      if (targetOwnerId && targetOwnerId === user.id) {
+        return false;
+      }
       return true;
     }
-    return user.role === UserRole.MANAGER;
+    return false;
   }
 
   /**

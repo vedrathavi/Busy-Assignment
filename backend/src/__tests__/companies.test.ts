@@ -744,5 +744,40 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
       // Express router without DELETE handler returns 404
       expect(res.status).toBe(404);
     });
+
+    it('41. should allow Sales Rep to archive and restore a company they own', async () => {
+      // Acme Corp is owned by Alex Rivera (rep1Token)
+      const archiveRes = await request(app)
+        .post(`/api/companies/${COMPANIES.acme}/archive`)
+        .set('Authorization', `Bearer ${rep1Token}`);
+      expect(archiveRes.status).toBe(200);
+      expect(archiveRes.body.data.isArchived).toBe(true);
+
+      const restoreRes = await request(app)
+        .post(`/api/companies/${COMPANIES.acme}/restore`)
+        .set('Authorization', `Bearer ${rep1Token}`);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.data.isArchived).toBe(false);
+    });
+
+    it('42. should reject Sales Rep attempting to archive a company they do not own with 403', async () => {
+      // Apex is owned by Priya (rep2Token); Alex (rep1Token) tries to archive it
+      const res = await request(app)
+        .post(`/api/companies/${COMPANIES.apex}/archive`)
+        .set('Authorization', `Bearer ${rep1Token}`);
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('You do not have permission to archive this company');
+    });
+
+    it('43. should reject Sales Rep attempting to restore an archived company they do not own with 403', async () => {
+      // Legacy Iron is owned by Marcus (rep3Token); Alex (rep1Token) tries to restore it
+      const res = await request(app)
+        .post(`/api/companies/${COMPANIES.legacyIron}/restore`)
+        .set('Authorization', `Bearer ${rep1Token}`);
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('You do not have permission to restore this company');
+    });
   });
 });

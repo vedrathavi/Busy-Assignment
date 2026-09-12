@@ -35,8 +35,10 @@ Each significant entry records:
 | **Phase 7** (Prompt 12) | Bulk Operations & Pipeline CSV Export | Implement Manager bulk reassign (`POST /api/deals/bulk/reassign`), Manager bulk advance (`POST /api/deals/bulk/advance`), Pipeline CSV export (`GET /api/deals/export`), partial success handling, existing transition policy reuse, previousStage preservation, and 16 Vitest tests. |
 | **Phase 8** (Prompt 13) | Deal Search, Filtering, Sorting & Pagination | Implement database-level search (`title` OR `company.name` case-insensitive), strict filters (`companyId`, `stage`, `ownerId`), deterministic sorting (`value`, `expectedCloseDate`, `updatedAt` + `id`), server-side pagination (`page`, `pageSize`, `limit`), pre-pagination `total`, and 30 Vitest tests. |
 | **Phase 9** (Prompt 14) | Dashboard Pipeline Metrics & Analytics | Implement database-level dashboard API (`GET /api/dashboard`), open deals, exact Decimal weighted pipeline, won/lost this month (`closedAt`), 4-stage distribution, safe owner breakdown, 8-week win trend (ISO Monday-Sunday half-open intervals), and 12 Vitest tests. |
-| **Phase 10** (Prompt 15) | Notification Foundation & Overdue Deal Alerts | Implement polymorphic notification architecture (`Notification` with `DEAL_OVERDUE` discriminator, composed with `DealAlert`), dynamic overdue alert derivation (`GET /api/alerts`), badge count (`GET /api/alerts/count`), atomic idempotent dismissal (`POST /api/alerts/:dealId/dismiss`), and 22 Vitest tests. |
-| **Phase 11** (Prompt 16) | Frontend Foundation & Design System | Implement shadcn/ui design tokens, CSS variables, Google Sans typography, centralized Axios client with token interceptor and 401 handling, AuthProvider session restoration, AppShell, responsive Sidebar & MobileNav, public/protected route guards, feedback primitives (`PageLoader`, `SkeletonLoader`, `EmptyState`, `ErrorState`, `NotFoundPage`), and clean placeholders for `/dashboard`, `/companies`, `/deals`, `/alerts`. |
+| **Phase 12** (Prompt 17) | Full Functional Frontend Modules | Implement full functional UI for Companies, Deals, Dashboard, and Alerts with real mutations, filters, and charts. |
+| **Phase 13** (Prompt 18) | CRM Polish, Team Directory & Zero-UUID UX | Implement `/users` directory, `/users/:id` profile, `UserSelector`, Indian Rupee currency, `/trash` archive, and Lovable styling. |
+| **Phase 13 Correction** (Prompt 19) | Deal Lifecycle & Restore Correction Pass | Align pipeline with assignment state machine (`NEW → QUALIFIED → PROPOSAL → NEGOTIATION → WON/LOST`), mandatory lost reason, and loading circles on state transitions. |
+| **Phase 14** (Prompt 20) | Deal Owner-Collaborator Mutual Exclusion Invariant | Enforce server-side invariant that deal owner cannot be a collaborator, with atomic collaborator removal upon reassignment in single and bulk workflows. |
 
 ---
 
@@ -814,3 +816,99 @@ Each significant entry records:
   - `backend/src/__tests__/users.test.ts`: 9/9 tests passed (100%).
   - Full backend test suite passing.
 - **Final outcome**: Phase 13 is 100% completed, fully verified, and ready for commit.
+
+---
+
+## 2026-09-12 - Prompt 19 - Phase 13 Correction: Deal Lifecycle & Restore Alignment Pass
+
+- **Problem / Task**: Re-align deal lifecycle state machine strictly with the assignment specification (`NEW → QUALIFIED → PROPOSAL → NEGOTIATION → WON/LOST`), require mandatory non-empty reason for `LOST`, differentiate Deal Reopen vs. Company Restore, display clean animated loading circles during stage transitions, and document server-driven `previousStage` mechanics.
+- **User Intent**:
+  - Enforce that Won and Lost are terminal outcomes reachable strictly from `NEGOTIATION`.
+  - Reject attempts to mark deals Lost or Won from earlier stages with `400 Bad Request`.
+  - Require a non-empty reason when marking a deal as Lost.
+  - Reopen restores server-persisted `previousStage` without client-side arbitrary stage selection.
+  - Display spinning circular loader when transitioning deal stages.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/deals/deal.transition-policy.ts`: Updated `DealTransitionPolicy` to enforce `WON`/`LOST` exclusively from `NEGOTIATION`, require non-empty reason for `LOST`, and validate `previousStage` on `canReopen()`.
+  - `frontend/src/features/deals/useDeals.ts`: Removed premature `onMutate` cache mutations to keep loading states visible and synchronize authoritatively on `onSuccess`.
+  - `frontend/src/pages/DealDetailPage.tsx`: Added animated spinning loading circles to all stage transitions, regressions, won/lost, and reopen buttons.
+  - `backend/src/__tests__/deals.test.ts`: Added tests 33a-33f covering terminal stage rules, mandatory loss reasons, multi-step backward rejection, and manager reopen validation (48/48 tests passing).
+  - Updated `docs/decisions.md` (Decision 23) and `docs/architecture.md`.
+- **Human review / testing**:
+  - Backend Vitest `deals.test.ts`: 48/48 passed (100%).
+  - Frontend production build passed cleanly.
+- **Final outcome**: Pipeline state machine and Reopen architecture fully aligned with the assignment.
+
+---
+
+## 2026-09-12 - Prompt 20 - Phase 14: Deal Owner-Collaborator Mutual Exclusion Invariant & Atomic Reassignment Cleanup
+
+- **Problem / Task**: Ensure a deal owner can NEVER also be a collaborator. When deal ownership is reassigned to a user who is currently a collaborator, the backend must automatically remove that user from the collaborator set within the same atomic database transaction.
+- **User Intent**:
+  - Prevent duplicate roles (owner cannot be a collaborator).
+  - Enforce server-side in both single deal update (`PATCH /api/deals/:id`) and bulk reassign (`POST /api/deals/bulk/reassign`).
+  - Atomically delete matching `DealCollaborator` rows during reassignment.
+  - Do NOT automatically add previous owner as collaborator.
+  - Do NOT emit extraneous `COLLABORATOR_REMOVED` audit history; record `OWNER_CHANGED` history.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/deals/deal.repository.ts`:
+    - Updated `updateWithHistory`: In the `$transaction`, when `ownerId` changes, automatically executed `tx.dealCollaborator.deleteMany({ where: { dealId: id, userId: data.ownerId } })` before updating the deal.
+    - Updated `reassignSingleDealWithHistory`: In the `$transaction`, automatically executed `tx.dealCollaborator.deleteMany({ where: { dealId, userId: newOwnerId } })` before updating the deal.
+  - `backend/src/__tests__/deals-collaboration.test.ts`: Added tests 30-35 verifying collaborator removal on reassignment, atomicity, no extraneous history events, and same-owner handling (35/35 passed).
+  - `backend/src/__tests__/deals-bulk-export.test.ts`: Updated test 2 verifying bulk reassignment collaborator cleanup (16/16 passed).
+  - Updated `docs/decisions.md` (Decision 24), `docs/architecture.md`, and `docs/ai-prompts.md`.
+- **Human review / testing**:
+  - `npm test` in `backend/`: all test suites passing.
+  - `npx tsc --noEmit` & `npm run build` in both backend and frontend: 0 errors.
+  - `git diff --check`: 0 errors.
+- **Final outcome**: Owner-collaborator mutual exclusion invariant is strictly enforced at the database transaction level.
+
+---
+
+## 2026-09-12 - Prompt 21 - Phase 15: Authoritative Deal Creation Ownership Model & Mandatory Sales Rep Assignment for Managers
+
+- **Problem / Task**: Fix business-flow bug where a Manager creating a deal was not prompted for a Deal Owner, causing deals to be automatically assigned to the Manager.
+- **User Intent**:
+  - Manager MUST explicitly select a Deal Owner (filtered strictly to valid `SALES_REP` team members).
+  - Managers must NOT be selectable as Deal Owner; deal creation must fail if a Manager does not select an owner.
+  - Sales Reps automatically own deals they create without manual selection.
+  - Backend must be authoritative: `DealPolicy.canCreate` and `DealService.createDeal` enforce that Managers supply a valid same-team `SALES_REP` as owner and Sales Reps only create deals owned by themselves.
+  - Update `CompanyDetailPage` and `DealsPage` Create Deal modals with the reusable `UserSelector`.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/deals/deal.policy.ts`: Updated `canCreate` to forbid Manager self-assignment (`targetOwnerId === user.id`) and forbid Sales Reps assigning to other users.
+  - `backend/src/modules/deals/deal.service.ts`: Updated `createDeal` to require non-empty `input.ownerId` for Manager callers and validate that the target owner exists, belongs to the same team/org, and possesses the `SALES_REP` role (throwing `BadRequestError`). Sales Rep callers automatically own the created deal (`targetOwnerId = user.id`).
+  - `frontend/src/pages/CompanyDetailPage.tsx`: Added `dealOwnerId` state and `UserSelector` (allowedRoles: `SALES_REP`) with required validation for Manager in Create Deal dialog.
+  - `frontend/src/pages/DealsPage.tsx`: Updated Create Deal dialog so `dealOwnerId` is required for Managers with explicit validation and helper text.
+  - `backend/src/__tests__/deals.test.ts`: Added tests 13a, 13b, 13c, 13d verifying Manager explicit assignment, rejection of missing owner, rejection of Manager assignment, rejection of external/invalid users, and Sales Rep self-ownership.
+  - `docs/architecture.md` & `docs/decisions.md`: Documented Decision 26 and the core Deal & Company Ownership Creation Model.
+- **Human review / testing**:
+  - `npm test` in `backend/`: 10/10 test files passed.
+  - `npx tsc --noEmit` in both `backend/` and `frontend/`: 0 errors.
+  - `npm run build` in both `backend/` and `frontend/`: 0 errors.
+  - `git diff --check`: 0 errors.
+- **Final outcome**: Deal creation ownership workflow is authoritative, robust, and consistent with the company ownership creation model.
+
+---
+
+## 2026-09-12 - Prompt 22 - Phase 16: Restrict Bulk Deal Operations UI to Managers & Vitest Cache Fix
+
+- **Problem / Task**:
+  1. Sales Reps could previously see selection checkboxes in the Deals pipeline table and trigger the floating bulk actions toolbar ("Bulk Advance"), resulting in a backend `403 Forbidden` error ("Only managers can perform bulk deal stage advancement").
+  2. Test discovery discrepancy where Vitest test cache served partial module graphs across test suites.
+- **User Intent**:
+  - Restrict bulk deal advance and bulk reassign actions strictly to Managers.
+  - Remove selection checkboxes and floating bulk action toolbar for Sales Reps to eliminate unauthorized action triggers.
+  - Ensure Vitest runs fresh discovery across all test files and all 247 tests pass.
+- **What IDE / Code Assistant implemented**:
+  - `frontend/src/pages/DealsPage.tsx`:
+    - Wrapped table header and row checkboxes with `{isManager && ...}` so Sales Reps see a clean, distraction-free table.
+    - Wrapped floating bulk operations toolbar with `{isManager && selectedDealIds.length > 0 && ...}`.
+    - Updated `<TableSkeleton>` column count dynamically (`isManager ? 8 : 7`).
+    - Added guard clauses `if (!isManager) return;` to `handleBulkAdvance` and `handleBulkReassignSubmit`.
+  - `backend/vitest.config.ts`:
+    - Added `cache: false` to test configuration to prevent stale worker transform caching.
+- **Human review / testing**:
+  - `cd backend && npm test`: 10/10 test suites passed (**247 / 247 tests**).
+  - `npx tsc --noEmit` & `npm run build` in both `backend/` and `frontend/`: 0 errors.
+  - `git diff --check`: 0 errors.
+- **Final outcome**: Bulk deal operations are cleanly guarded on both UI and backend, and the test suite executes reliably with complete test discovery.

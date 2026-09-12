@@ -22,7 +22,6 @@ import {
   DealListQuery,
   DealListResponse,
   DealStage,
-  STAGE_PROBABILITY,
   CreateDealInput,
   UpdateDealInput,
   CollaboratorResponse,
@@ -162,78 +161,6 @@ export function useTransitionDealStage() {
   return useMutation({
     mutationFn: ({ id, stage, reason }: { id: string; stage: DealStage; reason?: string }) =>
       transitionDealStageApi(id, stage, reason),
-    onMutate: async ({ id, stage }) => {
-      // 1. Cancel any outgoing refetches so they don't overwrite our instant optimistic update
-      await queryClient.cancelQueries({ queryKey: ['deals'] });
-
-      // 2. Snapshot current caches for rollback if the network fails
-      const previousDetailQueries = queryClient.getQueriesData<Deal>({
-        queryKey: ['deals', 'detail'],
-      });
-      const previousListQueries = queryClient.getQueriesData<DealListResponse>({
-        queryKey: ['deals'],
-      });
-
-      const probability = STAGE_PROBABILITY[stage] ?? 0;
-      const isClosing = stage === 'WON' || stage === 'LOST';
-
-      // 3. Instant optimistic update for deal detail views
-      queryClient.setQueriesData<Deal>(
-        { queryKey: ['deals', 'detail'] },
-        (old) => {
-          if (!old || old.id !== id) return old;
-          const val = Number(old.value) || 0;
-          return {
-            ...old,
-            previousStage: isClosing ? old.stage : old.previousStage,
-            stage,
-            stageProbability: probability,
-            weightedValue: (val * probability).toFixed(2),
-            closedAt: isClosing ? new Date().toISOString() : old.closedAt,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-      );
-
-      // 4. Instant optimistic update for deal list views (Deals table, User profile deals)
-      queryClient.setQueriesData<DealListResponse>(
-        { queryKey: ['deals'] },
-        (old) => {
-          if (!old?.deals) return old;
-          return {
-            ...old,
-            deals: old.deals.map((d) => {
-              if (d.id !== id) return d;
-              const val = Number(d.value) || 0;
-              return {
-                ...d,
-                previousStage: isClosing ? d.stage : d.previousStage,
-                stage,
-                stageProbability: probability,
-                weightedValue: (val * probability).toFixed(2),
-                closedAt: isClosing ? new Date().toISOString() : d.closedAt,
-                updatedAt: new Date().toISOString(),
-              };
-            }),
-          };
-        }
-      );
-
-      return { previousDetailQueries, previousListQueries };
-    },
-    onError: (_err, _vars, context) => {
-      // Rollback to snapshots on error
-      if (context?.previousDetailQueries) {
-        for (const [key, data] of context.previousDetailQueries) {
-          queryClient.setQueryData(key, data);
-        }
-      }
-      if (context?.previousListQueries) {
-        for (const [key, data] of context.previousListQueries) {
-          queryClient.setQueryData(key, data);
-        }
-      }
-    },
     onSuccess: (updatedDeal) => {
       // Sync authoritative server response into cache
       queryClient.setQueriesData<Deal>(
@@ -253,6 +180,7 @@ export function useTransitionDealStage() {
     },
     onSettled: () => {
       // Background revalidation
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'history'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
@@ -265,74 +193,6 @@ export function useReopenDeal() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => reopenDealApi(id),
-    onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: ['deals'] });
-
-      const previousDetailQueries = queryClient.getQueriesData<Deal>({
-        queryKey: ['deals', 'detail'],
-      });
-      const previousListQueries = queryClient.getQueriesData<DealListResponse>({
-        queryKey: ['deals'],
-      });
-
-      queryClient.setQueriesData<Deal>(
-        { queryKey: ['deals', 'detail'] },
-        (old) => {
-          if (!old || old.id !== id) return old;
-          const targetStage: DealStage = old.previousStage || 'QUALIFIED';
-          const prob = STAGE_PROBABILITY[targetStage] ?? 0.25;
-          const val = Number(old.value) || 0;
-          return {
-            ...old,
-            stage: targetStage,
-            stageProbability: prob,
-            weightedValue: (val * prob).toFixed(2),
-            closedAt: null,
-            previousStage: null,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-      );
-
-      queryClient.setQueriesData<DealListResponse>(
-        { queryKey: ['deals'] },
-        (old) => {
-          if (!old?.deals) return old;
-          return {
-            ...old,
-            deals: old.deals.map((d) => {
-              if (d.id !== id) return d;
-              const targetStage: DealStage = d.previousStage || 'QUALIFIED';
-              const prob = STAGE_PROBABILITY[targetStage] ?? 0.25;
-              const val = Number(d.value) || 0;
-              return {
-                ...d,
-                stage: targetStage,
-                stageProbability: prob,
-                weightedValue: (val * prob).toFixed(2),
-                closedAt: null,
-                previousStage: null,
-                updatedAt: new Date().toISOString(),
-              };
-            }),
-          };
-        }
-      );
-
-      return { previousDetailQueries, previousListQueries };
-    },
-    onError: (_err, _id, context) => {
-      if (context?.previousDetailQueries) {
-        for (const [key, data] of context.previousDetailQueries) {
-          queryClient.setQueryData(key, data);
-        }
-      }
-      if (context?.previousListQueries) {
-        for (const [key, data] of context.previousListQueries) {
-          queryClient.setQueryData(key, data);
-        }
-      }
-    },
     onSuccess: (updatedDeal) => {
       queryClient.setQueriesData<Deal>(
         { queryKey: ['deals', 'detail'] },
@@ -350,6 +210,7 @@ export function useReopenDeal() {
       );
     },
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'history'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['alerts'] });

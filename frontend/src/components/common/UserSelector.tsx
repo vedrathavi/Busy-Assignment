@@ -128,7 +128,7 @@ export function UserSelector({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search team member..."
-                className="w-full bg-transparent text-xs text-[#1c1c1c] placeholder:text-[#8e8d8a] outline-none focus:outline-none focus:ring-0"
+                className="w-full bg-transparent border-0 border-none text-xs text-[#1c1c1c] placeholder:text-[#8e8d8a] outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 shadow-none focus:shadow-none"
               />
             </div>
           </div>

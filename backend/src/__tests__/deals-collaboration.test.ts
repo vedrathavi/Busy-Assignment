@@ -20,6 +20,9 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
     d2:  '30000000-0000-4000-8000-000000000002', // Priya, QUALIFIED, Apex
     d3:  '30000000-0000-4000-8000-000000000003', // Marcus, PROPOSAL, Stellar (Collabs: Alex & Priya)
     d4:  '30000000-0000-4000-8000-000000000004', // Alex, NEGOTIATION, Zenith (Collab: Priya)
+    d8:  '30000000-0000-4000-8000-000000000008', // Priya, PROPOSAL, Apex
+    d10: '30000000-0000-4000-8000-000000000010', // Priya, NEGOTIATION, Zenith
+    d13: '30000000-0000-4000-8000-000000000013', // Marcus, NEGOTIATION, Stellar
     d18: '30000000-0000-4000-8000-000000000018', // Priya, NEW, Apex (Soft-deleted)
   };
 
@@ -59,10 +62,17 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
       });
     }
 
+    // Reset deal owners to seed state
+    await prisma.deal.update({ where: { id: DEALS.d3 }, data: { ownerId: USER_REP3_ID } });
+    await prisma.deal.update({ where: { id: DEALS.d4 }, data: { ownerId: USER_REP1_ID } });
+    await prisma.deal.update({ where: { id: DEALS.d8 }, data: { ownerId: USER_REP2_ID } });
+    await prisma.deal.update({ where: { id: DEALS.d10 }, data: { ownerId: USER_REP2_ID } });
+    await prisma.deal.update({ where: { id: DEALS.d13 }, data: { ownerId: USER_REP3_ID } });
+
     // Delete dynamically generated test history events
     await prisma.dealHistory.deleteMany({
       where: {
-        type: { in: [HistoryType.COLLABORATOR_ADDED, HistoryType.COLLABORATOR_REMOVED, HistoryType.NOTE_ADDED] },
+        type: { in: [HistoryType.COLLABORATOR_ADDED, HistoryType.COLLABORATOR_REMOVED, HistoryType.NOTE_ADDED, HistoryType.OWNER_CHANGED] },
         createdAt: { gte: new Date('2026-09-10T00:00:00.000Z') },
       },
     });
@@ -537,12 +547,12 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
   });
 
   // ==========================================================================
-  // 6. Ownership Reassignment & Collaborator Preservation
+  // 6. Ownership Reassignment & Collaborator Invariant Enforcement
   // ==========================================================================
-  describe('6. Ownership Reassignment & Collaborator Preservation', () => {
-    it('30. should preserve existing collaborators when Manager reassigns deal owner', async () => {
+  describe('6. Ownership Reassignment & Collaborator Invariant Enforcement', () => {
+    it('30. should preserve existing collaborators when Manager reassigns deal owner to a non-collaborator', async () => {
       // d4 is owned by Alex with Priya as collaborator.
-      // Manager reassigns d4 owner from Alex to Marcus.
+      // Manager reassigns d4 owner from Alex to Marcus (who is not a collaborator).
       const resUpdate = await request(app)
         .patch(`/api/deals/${DEALS.d4}`)
         .set('Authorization', `Bearer ${managerToken}`)
@@ -560,7 +570,7 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
       const userIds = collabsRes.body.data.map((c: any) => c.userId);
       expect(userIds).toContain(USER_REP2_ID);
 
-      // Verify Marcus is NOT added as a collaborator (he is owner)
+      // Verify Marcus is NOT in collaborators (he is owner)
       expect(userIds).not.toContain(USER_REP3_ID);
 
       // Restore d4 owner back to Alex
@@ -568,6 +578,104 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
         .patch(`/api/deals/${DEALS.d4}`)
         .set('Authorization', `Bearer ${managerToken}`)
         .send({ ownerId: USER_REP1_ID });
+    });
+
+    it('31. should automatically remove new owner from collaborators when reassigned to an existing collaborator', async () => {
+      // d3 is owned by Marcus (REP3) with Alex (REP1) & Priya (REP2) as collaborators.
+      // Reassign d3 owner from Marcus to Priya (REP2).
+      const resUpdate = await request(app)
+        .patch(`/api/deals/${DEALS.d3}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ ownerId: USER_REP2_ID });
+
+      expect(resUpdate.status).toBe(200);
+      expect(resUpdate.body.data.ownerId).toBe(USER_REP2_ID);
+
+      // Verify Priya is NO LONGER in the collaborator set
+      const collabsRes = await request(app)
+        .get(`/api/deals/${DEALS.d3}/collaborators`)
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(collabsRes.status).toBe(200);
+      const userIds = collabsRes.body.data.map((c: any) => c.userId);
+
+      // Priya is owner, so must not be in collaborators
+      expect(userIds).not.toContain(USER_REP2_ID);
+
+      // Alex was also a collaborator, so Alex must REMAIN a collaborator
+      expect(userIds).toContain(USER_REP1_ID);
+
+      // Previous owner Marcus must NOT be automatically added as collaborator
+      expect(userIds).not.toContain(USER_REP3_ID);
+
+      // Verify database row for Priya in DealCollaborator was atomically deleted
+      const priyaCollab = await prisma.dealCollaborator.findUnique({
+        where: { dealId_userId: { dealId: DEALS.d3, userId: USER_REP2_ID } },
+      });
+      expect(priyaCollab).toBeNull();
+    });
+
+    it('32. should record OWNER_CHANGED history without creating extraneous COLLABORATOR_REMOVED history when collaborator becomes owner', async () => {
+      // Check the history events for d3
+      const history = await prisma.dealHistory.findMany({
+        where: { dealId: DEALS.d3 },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // The latest event must be OWNER_CHANGED (Marcus -> Priya)
+      const ownerChanged = history.find((h) => h.type === HistoryType.OWNER_CHANGED);
+      expect(ownerChanged).toBeDefined();
+      expect(ownerChanged?.oldOwnerId).toBe(USER_REP3_ID);
+      expect(ownerChanged?.newOwnerId).toBe(USER_REP2_ID);
+
+      // There should NOT be a COLLABORATOR_REMOVED event generated for Priya's automatic removal
+      const collabRemoved = history.find(
+        (h) => h.type === HistoryType.COLLABORATOR_REMOVED && h.collaboratorId === USER_REP2_ID
+      );
+      expect(collabRemoved).toBeUndefined();
+
+      // Restore d3 back to Marcus and re-add Priya as collaborator for seed consistency
+      await request(app)
+        .patch(`/api/deals/${DEALS.d3}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ ownerId: USER_REP3_ID });
+
+      await prisma.dealCollaborator.upsert({
+        where: { dealId_userId: { dealId: DEALS.d3, userId: USER_REP2_ID } },
+        create: { dealId: DEALS.d3, userId: USER_REP2_ID },
+        update: {},
+      });
+    });
+
+    it('33. should handle reassignment to the current owner gracefully', async () => {
+      // d4 is owned by Alex. Reassigning to Alex should succeed without errors.
+      const res = await request(app)
+        .patch(`/api/deals/${DEALS.d4}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ ownerId: USER_REP1_ID });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.ownerId).toBe(USER_REP1_ID);
+    });
+
+    it('34. should reject Sales Rep attempting to reassign deal owner with 403 Forbidden', async () => {
+      const res = await request(app)
+        .patch(`/api/deals/${DEALS.d4}`)
+        .set('Authorization', `Bearer ${rep1Token}`)
+        .send({ ownerId: USER_REP2_ID });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('Only managers can reassign deal ownership');
+    });
+
+    it('35. should reject reassignment to a non-existent or foreign user with 400 Bad Request', async () => {
+      const res = await request(app)
+        .patch(`/api/deals/${DEALS.d4}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ ownerId: '10000000-0000-4000-8000-000000000099' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Target owner must be a valid Sales Rep in your team');
     });
   });
 });

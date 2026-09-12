@@ -47,6 +47,7 @@ export function CompanyDetailPage() {
   const isManager = user?.role === 'MANAGER';
 
   const { data: company, isLoading: isCompanyLoading, error: companyError } = useCompanyDetail(id);
+  const canArchiveOrRestore = isManager || Boolean(user?.id && company?.ownerId === user.id);
   const { data: dealsData, isLoading: isDealsLoading } = useDeals({
     companyId: id,
     limit: 50,
@@ -74,6 +75,7 @@ export function CompanyDetailPage() {
   const [dealTitle, setDealTitle] = useState('');
   const [dealValue, setDealValue] = useState('');
   const [dealDate, setDealDate] = useState('');
+  const [dealOwnerId, setDealOwnerId] = useState('');
 
   const openEditModal = () => {
     if (!company) return;
@@ -127,9 +129,22 @@ export function CompanyDetailPage() {
     }
   };
 
+  const openCreateDealModal = () => {
+    setDealTitle('');
+    setDealValue('');
+    setDealDate('');
+    setDealOwnerId('');
+    setActionError(null);
+    setIsCreateDealOpen(true);
+  };
+
   const handleCreateDealSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
+    if (isManager && !dealOwnerId.trim()) {
+      setActionError('Please select a deal owner.');
+      return;
+    }
     setActionError(null);
     try {
       await createDealMutation.mutateAsync({
@@ -137,11 +152,13 @@ export function CompanyDetailPage() {
         companyId: id,
         value: dealValue.trim(),
         expectedCloseDate: dealDate,
+        ...(isManager && dealOwnerId ? { ownerId: dealOwnerId } : {}),
       });
       setIsCreateDealOpen(false);
       setDealTitle('');
       setDealValue('');
       setDealDate('');
+      setDealOwnerId('');
     } catch (err: any) {
       setActionError(err.response?.data?.message || err.message || 'Failed to create deal');
     }
@@ -280,38 +297,37 @@ export function CompanyDetailPage() {
               >
                 <FiEdit2 className="h-3.5 w-3.5" /> Edit
               </Button>
-              {company.isArchived ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setActionError(null);
-                    setIsRestoreOpen(true);
-                  }}
-                  className="text-xs gap-1.5 text-emerald-700 hover:text-emerald-800"
-                >
-                  <FiRefreshCw className="h-3.5 w-3.5" /> Restore
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setActionError(null);
-                    setIsArchiveOpen(true);
-                  }}
-                  className="text-xs gap-1.5 text-amber-700 hover:text-amber-800"
-                >
-                  <FiArchive className="h-3.5 w-3.5" /> Archive
-                </Button>
+              {canArchiveOrRestore && (
+                company.isArchived ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setActionError(null);
+                      setIsRestoreOpen(true);
+                    }}
+                    className="text-xs gap-1.5 text-emerald-700 hover:text-emerald-800"
+                  >
+                    <FiRefreshCw className="h-3.5 w-3.5" /> Restore
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setActionError(null);
+                      setIsArchiveOpen(true);
+                    }}
+                    className="text-xs gap-1.5 text-amber-700 hover:text-amber-800"
+                  >
+                    <FiArchive className="h-3.5 w-3.5" /> Archive
+                  </Button>
+                )
               )}
               {!company.isArchived && (
                 <Button
                   size="sm"
-                  onClick={() => {
-                    setActionError(null);
-                    setIsCreateDealOpen(true);
-                  }}
+                  onClick={openCreateDealModal}
                   className="text-xs gap-1.5 bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset"
                 >
                   <FiPlus className="h-3.5 w-3.5" /> Create Deal
@@ -338,10 +354,7 @@ export function CompanyDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                setActionError(null);
-                setIsCreateDealOpen(true);
-              }}
+              onClick={openCreateDealModal}
               className="text-xs gap-1"
             >
               <FiPlus className="h-3.5 w-3.5" /> Add Deal
@@ -362,7 +375,7 @@ export function CompanyDetailPage() {
               {!company.isArchived && (
                 <Button
                   size="sm"
-                  onClick={() => setIsCreateDealOpen(true)}
+                  onClick={openCreateDealModal}
                   className="mt-4 text-xs bg-[#1c1c1c] text-[#fcfbf8]"
                 >
                   <FiPlus className="h-3.5 w-3.5 mr-1" /> Create First Deal
@@ -509,6 +522,11 @@ export function CompanyDetailPage() {
             <DialogDescription>Add a new sales opportunity to your pipeline.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateDealSubmit} className="space-y-4">
+            {actionError && (
+              <div className="rounded-[6px] bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">
+                {actionError}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="dealTitle">Deal Title *</Label>
               <Input
@@ -542,6 +560,30 @@ export function CompanyDetailPage() {
                 required
               />
             </div>
+
+            {/* Deal Owner Assignment */}
+            {isManager ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="createDealOwner">Deal Owner *</Label>
+                <UserSelector
+                  id="createDealOwner"
+                  value={dealOwnerId}
+                  onChange={(id) => setDealOwnerId(id)}
+                  allowedRoles={['SALES_REP']}
+                  placeholder="Select Sales Representative..."
+                />
+                <p className="text-[11px] text-[#5f5f5d]">
+                  Managers must assign a Sales Representative as deal owner.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-[6px] bg-[#f7f4ed] p-2.5 text-xs text-[#5f5f5d] border border-[#eceae4]">
+                <p>
+                  <span className="font-medium text-[#1c1c1c]">Deal Owner:</span> You ({user?.name || 'Current User'}) will automatically be assigned as the deal owner.
+                </p>
+              </div>
+            )}
+
             <DialogFooter>
               <Button type="button" variant="outline" size="sm" onClick={() => setIsCreateDealOpen(false)}>
                 Cancel
