@@ -315,3 +315,30 @@ At 100x data volume (~100,000+ deals, ~1,000,000+ history events), the system ma
    - Weighted pipeline values (`deal.value * stage.probability`) are computed dynamically in SQL or service aggregation, preventing data synchronization anomalies.
 6. **Append-Only History Scaling**:
    - `DealHistory` is indexed on `(dealId, createdAt DESC)`. Because deals are soft-deleted, history records remain permanently attached to their parent deals without risk of cascade drops or orphaned rows. At extreme scale, PostgreSQL declarative table partitioning by `createdAt` or range hash on `dealId` can be adopted without changing application business logic.
+
+---
+
+## 8. Authentication Architecture & Account Provisioning Model
+
+### Authoritative Authentication Pipeline
+- **Login Flow (`POST /api/auth/login`)**:
+  - Validates email format and non-empty password via Zod.
+  - Normalizes email to lower-case.
+  - Compares provided password against bcrypt hash stored in PostgreSQL.
+  - Emits a generic `401 Unauthorized: Invalid email or password` for non-existent users or incorrect passwords to prevent user enumeration attacks.
+  - Issues signed Bearer JWT (`{ sub: user.id }`) valid for session duration.
+  - Returns sanitized `AuthUser` object (excluding `passwordHash`).
+- **Profile / Context Resolution (`GET /api/auth/me`)**:
+  - Validates JWT signature and expiration.
+  - Resolves authoritative user profile and role (`MANAGER` vs `SALES_REP`) from the database on every authenticated request.
+
+### Enterprise Provisioning Model vs. Public Sign-Up
+To enforce single-tenant organization security, data isolation, and prevent unauthorized role escalation:
+1. **No Public Self-Registration**:
+   - There is intentionally no public self-service registration API (`POST /api/auth/register`).
+   - Normal users cannot create arbitrary accounts or select privileged roles (`MANAGER` or `SALES_REP`) from the public internet.
+2. **Server-Side Administrative Provisioning**:
+   - User accounts and organizational role assignments are provisioned by Organization Administrators or Team Managers via the authenticated `POST /api/users` module.
+3. **Public Sign-Up View Behavior**:
+   - The Sign-Up tab on `/signup` provides enterprise access instructions explaining account provisioning.
+   - It guides issued users to sign in with their credentials or contact their team manager for onboarding.

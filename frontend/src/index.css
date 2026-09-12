@@ -149,3 +149,18 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(28, 28, 28, 0.3);
 }
+
+/* 3D Perspective & Floating Animations for Auth Showcase */
+@keyframes float3d {
+  0%, 100% {
+    transform: perspective(1400px) rotateY(-10deg) rotateX(6deg) translateY(0px);
+  }
+  50% {
+    transform: perspective(1400px) rotateY(-7deg) rotateX(3deg) translateY(-10px);
+  }
+}
+
+.animate-float-3d {
+  animation: float3d 6s ease-in-out infinite;
+  transform-style: preserve-3d;
+}

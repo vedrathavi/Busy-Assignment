@@ -489,3 +489,39 @@ This document records the major architectural, domain, and technology decisions 
   - Eliminates accidental Manager-owned deals and aligns the Deal creation workflow 1:1 with Company creation semantics.
 - **Trade-offs**:
   - None; establishes consistent role-based ownership boundaries across all domain modules.
+
+---
+
+## Decision 27: Production Split-Screen Authentication Experience & Enterprise Provisioning Sign-Up Model
+
+- **Context / Problem**:
+  - The login interface was previously a basic centered card form.
+  - The authentication experience needed to be redesigned into a production-grade, 50-50 split-screen layout with an interactive 3D CRM dashboard preview on the graphic side and a responsive authentication form on the left.
+  - Furthermore, we needed to establish clear architectural boundaries for what is implemented in authentication versus what is explicitly prohibited in public sign-up under our single-tenant CRM model.
+- **Chose**:
+  1. **50-50 Split Responsive Layout**:
+     - Desktop: 50% left column (authentication card) and 50% right column (3D animated CRM dashboard preview).
+     - Mobile / Tablet (`< 1024px`): Responsive single column where the auth form occupies 100% viewport width with accessible touch targets, zero overflow, and no horizontal scrollbars.
+  2. **Sign In Architecture**:
+     - Fields: Work Email and Password.
+     - Real database verification via `POST /api/auth/login` (bcrypt hash check in PostgreSQL and signed Bearer JWT issuance).
+     - Generic `Invalid email or password` error message to prevent email enumeration attacks.
+     - Client UX: Password visibility toggle (`FiEye`/`FiEyeOff`), loading spinner on submit, disabled button while pending, accessible labels, "Remember me" device preference, and "Forgot password" modal directing users to their administrator.
+  3. **3D Animated Realistic Dashboard Preview (Right Column)**:
+     - Implemented a 3D isometric floating CRM dashboard preview using pure CSS/Tailwind (`animate-float-3d`, `perspective: 1400px`, `rotateY(-10deg) rotateX(6deg)`) without external raster images.
+     - Strictly styled in our signature BUSY CRM theme (warm cream `#f7f4ed`/`#fcfbf8`, crisp borders `#eceae4`, rich charcoal `#1c1c1c`, muted gray `#5f5f5d`, and emerald won indicators).
+     - Previews real CRM metrics matching `DashboardPage.tsx`: 4 executive metric cards (Open Deals, Weighted Pipeline, Won This Month, Lost This Month), trailing 8-Week Win Trend chart, Stage Breakdown, and an Active Deal Spotlight card with multi-user collaborator pills.
+  4. **Sign-Up Boundaries & Enterprise Provisioning Model**:
+     - **What is NOT Allowed in Sign Up Right Now**:
+       - ❌ **No Public Self-Registration Endpoint**: There is intentionally no public `POST /api/auth/register` API.
+       - ❌ **No Public Role Selection**: Normal users can NEVER arbitrarily select or assign themselves the `MANAGER` or `SALES_REP` role from the frontend.
+       - ❌ **No Mock / Fake Login**: No demo credentials, hardcoded bypass buttons, or client-side mock authentication exist. All login attempts hit the authoritative backend API.
+     - **What is Implemented in the Sign-Up Tab**:
+       - Provides a clear, professional enterprise onboarding view explaining that BUSY CRM operates under single-tenant organization security where user accounts and role assignments (`MANAGER` vs `SALES_REP`) are provisioned directly by Team Administrators via `POST /api/users`.
+       - Offers quick actions to switch back to Sign In with issued credentials or contact the Organization Administrator.
+  5. **Routing**:
+     - Both `/login` and `/signup` routes are handled under `PublicRoute` in `AppRoutes.tsx`, ensuring authenticated users are automatically redirected to `/dashboard`.
+- **Why**:
+  - Elevates first-impression visual polish while strictly protecting organization tenancy, database integrity, and server-authoritative role security.
+- **Trade-offs**:
+  - Public visitors cannot self-create organizations or accounts unassisted; user creation remains an authenticated administrative action.

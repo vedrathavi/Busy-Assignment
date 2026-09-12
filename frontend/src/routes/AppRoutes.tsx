@@ -17,9 +17,17 @@ import { NotFoundPage } from '@/components/common/NotFoundPage';
 export function AppRoutes() {
   return (
     <Routes>
-      {/* Public Route: Login */}
+      {/* Public Routes: Login & Sign Up */}
       <Route
         path="/login"
+        element={
+          <PublicRoute>
+            <LoginPage />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/signup"
         element={
           <PublicRoute>
             <LoginPage />

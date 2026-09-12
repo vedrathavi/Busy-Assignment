@@ -912,3 +912,41 @@ Each significant entry records:
   - `npx tsc --noEmit` & `npm run build` in both `backend/` and `frontend/`: 0 errors.
   - `git diff --check`: 0 errors.
 - **Final outcome**: Bulk deal operations are cleanly guarded on both UI and backend, and the test suite executes reliably with complete test discovery.
+
+---
+
+## 2026-09-12 - Prompt 23 - Phase 17: Redesigned Split-Screen Authentication Experience & Enterprise Provisioning Sign-Up Model
+
+- **Problem / Task**:
+  1. Redesign the BUSY CRM authentication experience into a production-grade 50-50 split-screen page inspired by modern SaaS layout patterns without copying external branding or generating images.
+  2. Implement a realistic 3D floating CRM sales dashboard animation in the right panel strictly aligned with BUSY CRM's warm cream/charcoal theme (`#1c1c1c`, `#f7f4ed`, `#eceae4`, `#5f5f5d`).
+  3. Ensure the left authentication form is fully responsive on mobile/tablet devices (`< 1024px`).
+  4. Clarify and enforce sign-up security boundaries: preserve the single-tenant enterprise provisioning model and prevent unauthorized public account creation or role escalation.
+- **User Intent**:
+  - Split screen: 50% left (auth form) / 50% right (graphic panel) on desktop; full-width responsive form on mobile.
+  - Right panel: 3D animated floating perspective CRM dashboard preview (`animate-float-3d`) showcasing real metrics (Open Deals, Weighted Pipeline, Won This Month, Lost This Month), 8-Week Win Trend chart, Stage Breakdown, and an Active Deal Spotlight with collaborator pills.
+  - Theme consistency: Pure BUSY CRM palette (no foreign blue/cyan accents).
+  - Authentic authentication: Login strictly invokes `POST /api/auth/login` and `GET /api/auth/me`.
+  - **What is NOT Allowed in Sign Up**:
+    - No public registration endpoint (`POST /api/auth/register`).
+    - No public role selection (users cannot select `MANAGER` or `SALES_REP` from the frontend).
+    - No mock/fake logins or hardcoded bypass buttons.
+  - **What is Implemented in Sign Up**:
+    - Enterprise onboarding view explaining that user accounts and role assignments are provisioned by Team Administrators via `POST /api/users`.
+    - Direct actions to sign in with issued credentials or contact the Organization Administrator.
+- **What IDE / Code Assistant implemented**:
+  - `frontend/src/features/auth/LoginPage.tsx`:
+    - Implemented 50-50 split layout on desktop and full-width centered card on mobile/tablet.
+    - Added seamless segmented mode switcher between Sign In and Sign Up with URL synchronization (`/login` and `/signup`).
+    - Added password visibility toggle (`FiEye`/`FiEyeOff`), accessible labels, loading states, generic error banners, "Remember Me" preference, and "Forgot Password" modal.
+    - Implemented the realistic 3D floating CRM dashboard preview using pure Tailwind/React and CSS perspective transforms.
+  - `frontend/src/index.css`:
+    - Added `@keyframes float3d` for the GPU-accelerated 3D floating perspective oscillation.
+  - `frontend/src/routes/AppRoutes.tsx`:
+    - Added `/signup` route mapping to `LoginPage` inside `PublicRoute` with automatic redirection for authenticated users.
+  - Updated `docs/decisions.md` (Decision 27), `docs/architecture.md`, and `docs/ai-prompts.md`.
+- **Human review / testing**:
+  - `npm test` in `backend/`: 10/10 test files passed (**247 / 247 tests**).
+  - `npx tsc --noEmit` & `npm run build` in both `backend/` and `frontend/`: 0 errors.
+  - `git diff --check`: 0 errors.
+- **Final outcome**: High-polish, 50-50 split-screen authentication page with responsive mobile layout, realistic 3D floating CRM dashboard preview, and strictly preserved enterprise provisioning security model.
