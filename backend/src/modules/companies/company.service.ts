@@ -1,3 +1,4 @@
+import { UserRole } from '@prisma/client';
 import { prisma } from '../../database/prisma';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors/app-error';
 import { AuthUser } from '../auth/auth.types';
@@ -17,13 +18,23 @@ export class CompanyService {
    */
   async createCompany(user: AuthUser, input: CreateCompanyInput): Promise<CompanyResponse> {
     if (!companyPolicy.canCreate(user, input.ownerId)) {
-      throw new ForbiddenError('Sales reps cannot assign companies to other users');
+      if (user.role === UserRole.SALES_REP) {
+        throw new ForbiddenError('Sales reps cannot assign companies to other users');
+      }
+      if (user.role === UserRole.MANAGER && input.ownerId === user.id) {
+        throw new BadRequestError('Company owner must have the SALES_REP role');
+      }
+      throw new ForbiddenError('You do not have permission to create this company');
     }
 
-    let targetOwnerId = user.id;
+    let targetOwnerId: string;
 
-    if (input.ownerId && input.ownerId !== user.id) {
-      // Validate that the target owner exists and belongs to the authenticated team
+    if (user.role === UserRole.MANAGER) {
+      if (!input.ownerId || !input.ownerId.trim()) {
+        throw new BadRequestError('Managers must explicitly assign an owning sales rep');
+      }
+
+      // Validate that target owner exists, belongs to caller's team & org, and has role SALES_REP
       const targetUser = await prisma.user.findFirst({
         where: {
           id: input.ownerId,
@@ -36,7 +47,14 @@ export class CompanyService {
         throw new BadRequestError('Target owner does not exist or does not belong to your team');
       }
 
+      if (targetUser.role !== UserRole.SALES_REP) {
+        throw new BadRequestError('Company owner must have the SALES_REP role');
+      }
+
       targetOwnerId = targetUser.id;
+    } else {
+      // Sales Rep automatically becomes the company owner
+      targetOwnerId = user.id;
     }
 
     return companyRepository.create({
@@ -91,26 +109,93 @@ export class CompanyService {
       throw new ForbiddenError('You do not have permission to edit this company');
     }
 
-    // 3. If owner reassignment is requested, verify caller is Manager and target belongs to team
-    if (input.ownerId && input.ownerId !== company.ownerId) {
+    // 3. If owner reassignment is requested:
+    if (input.ownerId !== undefined) {
       if (!companyPolicy.canReassignOwner(user)) {
         throw new ForbiddenError('Only managers can reassign company ownership');
       }
 
-      const targetUser = await prisma.user.findFirst({
-        where: {
-          id: input.ownerId,
-          teamId: user.teamId,
-          organizationId: user.organizationId,
-        },
-      });
+      if (input.ownerId !== company.ownerId) {
+        const targetUser = await prisma.user.findFirst({
+          where: {
+            id: input.ownerId,
+            teamId: user.teamId,
+            organizationId: user.organizationId,
+          },
+        });
 
-      if (!targetUser) {
-        throw new BadRequestError('Target owner does not exist or does not belong to your team');
+        if (!targetUser) {
+          throw new BadRequestError('Target owner does not exist or does not belong to your team');
+        }
+
+        if (targetUser.role !== UserRole.SALES_REP) {
+          throw new BadRequestError('Company owner must have the SALES_REP role');
+        }
       }
     }
 
     return companyRepository.update(companyId, input);
+  }
+
+  /**
+   * Searches for similar companies in the user's team for advisory duplicate detection.
+   * Excludes soft-deleted deals from activeDealsCount.
+   * Query is non-blocking, team-scoped, and case-insensitive.
+   */
+  async findSimilarCompanies(user: AuthUser, name?: string): Promise<Array<{
+    id: string;
+    name: string;
+    industry: string;
+    owner: { id: string; name: string; email: string };
+    activeDealsCount: number;
+  }>> {
+    const trimmed = (name || '').trim();
+    if (trimmed.length < 2) {
+      return [];
+    }
+
+    const companies = await prisma.company.findMany({
+      where: {
+        teamId: user.teamId,
+        name: {
+          contains: trimmed,
+          mode: 'insensitive',
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        industry: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            deals: {
+              where: {
+                deletedAt: null,
+              },
+            },
+          },
+        },
+      },
+      take: 3,
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    return companies.map((c) => ({
+      id: c.id,
+      name: c.name,
+      industry: c.industry,
+      owner: c.owner,
+      activeDealsCount: c._count.deals,
+    }));
   }
 
   /**

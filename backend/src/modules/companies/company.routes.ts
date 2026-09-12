@@ -9,6 +9,7 @@ companyRouter.use(authenticateToken);
 
 companyRouter.post('/', (req, res, next) => companyController.create(req, res, next));
 companyRouter.get('/', (req, res, next) => companyController.list(req, res, next));
+companyRouter.get('/similar', (req, res, next) => companyController.findSimilar(req, res, next));
 companyRouter.get('/:id', (req, res, next) => companyController.getById(req, res, next));
 companyRouter.patch('/:id', (req, res, next) => companyController.update(req, res, next));
 companyRouter.post('/:id/archive', (req, res, next) => companyController.archive(req, res, next));

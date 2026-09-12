@@ -391,40 +391,43 @@ export class DealRepository {
       updatePayload.expectedCloseDate = new Date(`${data.expectedCloseDate}T00:00:00.000Z`);
     }
 
-    return prisma.$transaction(async (tx) => {
-      const updatedDeal = await tx.deal.update({
-        where: { id },
-        data: updatePayload,
-        select: dealSelect,
-      });
-
-      // If owner changed, record OWNER_CHANGED in immutable history and sync notification recipient
-      if (data.ownerId && oldOwnerId && data.ownerId !== oldOwnerId) {
-        await tx.dealHistory.create({
-          data: {
-            dealId: id,
-            actorId,
-            type: HistoryType.OWNER_CHANGED,
-            oldOwnerId,
-            newOwnerId: data.ownerId,
-          },
+    return prisma.$transaction(
+      async (tx) => {
+        const updatedDeal = await tx.deal.update({
+          where: { id },
+          data: updatePayload,
+          select: dealSelect,
         });
 
-        // Keep notification recipient aligned with new deal owner
-        const existingAlert = await tx.dealAlert.findUnique({
-          where: { dealId: id },
-          select: { notificationId: true },
-        });
-        if (existingAlert) {
-          await tx.notification.update({
-            where: { id: existingAlert.notificationId },
-            data: { userId: data.ownerId },
+        // If owner changed, record OWNER_CHANGED in immutable history and sync notification recipient
+        if (data.ownerId && oldOwnerId && data.ownerId !== oldOwnerId) {
+          await tx.dealHistory.create({
+            data: {
+              dealId: id,
+              actorId,
+              type: HistoryType.OWNER_CHANGED,
+              oldOwnerId,
+              newOwnerId: data.ownerId,
+            },
           });
-        }
-      }
 
-      return mapDealToResponse(updatedDeal);
-    });
+          // Keep notification recipient aligned with new deal owner
+          const existingAlert = await tx.dealAlert.findUnique({
+            where: { dealId: id },
+            select: { notificationId: true },
+          });
+          if (existingAlert) {
+            await tx.notification.update({
+              where: { id: existingAlert.notificationId },
+              data: { userId: data.ownerId },
+            });
+          }
+        }
+
+        return mapDealToResponse(updatedDeal);
+      },
+      { timeout: 15000, maxWait: 10000 }
+    );
   }
 
   /**

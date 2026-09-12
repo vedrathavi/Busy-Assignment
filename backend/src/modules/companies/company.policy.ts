@@ -5,13 +5,20 @@ export class CompanyPolicy {
   /**
    * Evaluates if the user has permission to create a company with the given owner.
    * - A Sales Rep can only create a company owned by themselves.
-   * - A Manager can assign ownership to any Sales Rep in their team.
+   * - A Manager must assign ownership to a Sales Rep (cannot assign to themselves).
    */
   canCreate(user: AuthUser, targetOwnerId?: string): boolean {
-    if (!targetOwnerId || targetOwnerId === user.id) {
+    if (user.role === UserRole.SALES_REP) {
+      return !targetOwnerId || targetOwnerId === user.id;
+    }
+    if (user.role === UserRole.MANAGER) {
+      // Manager cannot assign themselves as company owner
+      if (targetOwnerId && targetOwnerId === user.id) {
+        return false;
+      }
       return true;
     }
-    return user.role === UserRole.MANAGER;
+    return false;
   }
 
   /**

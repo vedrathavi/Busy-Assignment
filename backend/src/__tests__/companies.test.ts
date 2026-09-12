@@ -583,4 +583,166 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
       expect(res.body.message).toBe('Company not found');
     });
   });
+
+  // ==========================================================================
+  // 7. Phase 13: Company Ownership & Similar Search Integrity
+  // ==========================================================================
+  describe('7. Phase 13: Company Ownership & Similar Search Integrity', () => {
+    it('31. should reject Manager creating company without ownerId with 400', async () => {
+      const res = await request(app)
+        .post('/api/companies')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          name: 'Unassigned Company Corp',
+          industry: 'Consulting',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Managers must explicitly assign an owning sales rep');
+    });
+
+    it('32. should reject Manager assigning themselves or any Manager as company owner with 400', async () => {
+      const res = await request(app)
+        .post('/api/companies')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          name: 'Manager Owned Venture',
+          industry: 'Management',
+          ownerId: USER_MANAGER_ID, // Self (Manager)
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Company owner must have the SALES_REP role');
+    });
+
+    it('33. should reject Manager reassigning company owner to a Manager with 400', async () => {
+      const res = await request(app)
+        .patch(`/api/companies/${COMPANIES.acme}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          ownerId: USER_MANAGER_ID,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Company owner must have the SALES_REP role');
+    });
+
+    it('34. should reject Sales Rep attempting to provide ownerId in PATCH with 403', async () => {
+      const res = await request(app)
+        .patch(`/api/companies/${COMPANIES.acme}`)
+        .set('Authorization', `Bearer ${rep1Token}`)
+        .send({
+          ownerId: USER_REP2_ID,
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Only managers can reassign company ownership');
+    });
+
+    it('35. should search similar companies and return activeDealsCount excluding soft-deleted deals', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Acme')
+        .set('Authorization', `Bearer ${rep1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      const acmeMatch = res.body.data.find((c: any) => c.name.toLowerCase().includes('acme'));
+      expect(acmeMatch).toBeDefined();
+      expect(acmeMatch).toHaveProperty('activeDealsCount');
+      expect(typeof acmeMatch.activeDealsCount).toBe('number');
+      expect(acmeMatch.owner).toHaveProperty('name');
+    });
+
+    it('36. should return empty array for similar company search with name shorter than 2 characters', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=A')
+        .set('Authorization', `Bearer ${rep1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual([]);
+    });
+
+    it('37. should allow creating a company with the same name without blocking (non-blocking warning)', async () => {
+      // First company: Acme Duplicate 1
+      const res1 = await request(app)
+        .post('/api/companies')
+        .set('Authorization', `Bearer ${rep1Token}`)
+        .send({
+          name: 'Homonym Solutions',
+          industry: 'Software',
+        });
+      expect(res1.status).toBe(201);
+      createdCompanyIds.push(res1.body.data.id);
+
+      // Second company with the exact same name: Homonym Solutions
+      const res2 = await request(app)
+        .post('/api/companies')
+        .set('Authorization', `Bearer ${rep1Token}`)
+        .send({
+          name: 'Homonym Solutions',
+          industry: 'Hardware',
+        });
+      expect(res2.status).toBe(201);
+      expect(res2.body.data.id).not.toBe(res1.body.data.id);
+      createdCompanyIds.push(res2.body.data.id);
+    });
+
+    it('38. should verify different deals under the same company have independent deal owners', async () => {
+      // Acme Corp (COMPANIES.acme) is owned by Alex Rivera (USER_REP1_ID)
+      const companyRes = await request(app)
+        .get(`/api/companies/${COMPANIES.acme}`)
+        .set('Authorization', `Bearer ${managerToken}`);
+      expect(companyRes.status).toBe(200);
+      expect(companyRes.body.data.ownerId).toBe(USER_REP1_ID);
+
+      // Query deals for Acme Corp
+      const dealsRes = await request(app)
+        .get(`/api/deals?companyId=${COMPANIES.acme}`)
+        .set('Authorization', `Bearer ${managerToken}`);
+      expect(dealsRes.status).toBe(200);
+      expect(dealsRes.body.data.length).toBeGreaterThan(0);
+
+      // Deal owners are deal-level attributes, not derived from company owner
+      for (const deal of dealsRes.body.data) {
+        expect(deal).toHaveProperty('ownerId');
+        expect(deal).toHaveProperty('owner');
+        expect(deal.companyId).toBe(COMPANIES.acme);
+      }
+    });
+
+    it('39. should verify archiving a company preserves all its associated deals in the database', async () => {
+      // Archive Acme Corp
+      const archiveRes = await request(app)
+        .post(`/api/companies/${COMPANIES.acme}/archive`)
+        .set('Authorization', `Bearer ${managerToken}`);
+      expect(archiveRes.status).toBe(200);
+      expect(archiveRes.body.data.isArchived).toBe(true);
+
+      // Verify deals under Acme Corp still exist in the database
+      const dealsCount = await prisma.deal.count({
+        where: { companyId: COMPANIES.acme },
+      });
+      expect(dealsCount).toBeGreaterThan(0);
+
+      // Restore Acme Corp for test cleanliness
+      await request(app)
+        .post(`/api/companies/${COMPANIES.acme}/restore`)
+        .set('Authorization', `Bearer ${managerToken}`);
+    });
+
+    it('40. should ensure NO physical DELETE /api/companies/:id route exists', async () => {
+      const res = await request(app)
+        .delete(`/api/companies/${COMPANIES.acme}`)
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      // Express router without DELETE handler returns 404
+      expect(res.status).toBe(404);
+    });
+  });
 });

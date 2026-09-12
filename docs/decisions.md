@@ -317,3 +317,58 @@ This document records the major architectural, domain, and technology decisions 
   - **Immutable History Preserved**: `DealHistory` continues to record the `OWNER_CHANGED` audit log cleanly while the live alert recipient is updated in the same transaction.
   - **Zero Background Complexity**: All updates occur synchronously and atomically within Prisma transactions.
 - **Trade-offs**: An extra indexed lookup during deal reassignment to check if a `DealAlert` exists for the deal.
+
+---
+
+## Decision 20: Frontend Design System, Token Architecture & Decoupled Auth Storage
+
+- **Context / Problem**: Structuring a modern, responsive React frontend foundation with shadcn/ui design tokens, reliable Axios token injection/interception, session persistence, and responsive layouts down to 375px without horizontal overflow.
+- **Chose**:
+  1. **Tailwind + HSL CSS Custom Properties**: Shadcn/ui semantic design tokens configured via CSS variables (`--primary`, `--card`, `--accent`, `--destructive`, `--ring`, etc.) with relative typography (`rem`, `em`, Tailwind scaling).
+  2. **Decoupled Auth Storage Abstraction (`authStorage`)**: Centralized storage abstraction with an observer/subscriber pattern that bridges the Axios 401 response interceptor and the React `AuthContext` without tightly coupling Axios directly to React component state.
+  3. **Authoritative Backend Context Restoration**: On initial application mount, `AuthProvider` validates stored JWTs via `GET /api/auth/me` to hydrate current user profile and role dynamically.
+  4. **Strict Scope Isolation**: Route placeholders (`/dashboard`, `/companies`, `/deals`, `/alerts`) utilize the shared `AppShell` and feedback primitives (`PageLoader`, `SkeletonLoader`, `EmptyState`, `ErrorState`, `NotFoundPage`) while strictly isolating domain feature logic to subsequent phases.
+- **Rejected**:
+  - Tightly coupling Axios interceptors directly to React hook instances or navigation singletons.
+  - Hardcoded fixed `px` layouts that cause horizontal scrolling on mobile screens (375px).
+  - Prematurely implementing half-finished domain state or client-side mockup stores inside placeholder pages.
+- **Why**:
+  - **Resilience**: The subscriber pattern allows Axios to react to 401 unauthorized responses immediately and clear credentials across the application cleanly.
+  - **Security**: Client-side role helpers (`isManager`, `isSalesRep`) are strictly treated as UI affordances; server-side guards remain authoritative.
+  - **Responsive SaaS Standard**: Fluid relative layouts guarantee seamless usability across mobile, tablet, and desktop viewports.
+- **Trade-offs**: Requires wrapping components inside `AuthProvider` and using `authStorage` for token access across modules.
+
+---
+
+## Decision 21: Authoritative Team Users Module, Scoped Profiles & Zero-UUID UserSelector
+
+- **Context / Problem**: In earlier phases, deal owner reassignment, bulk reassignment, and collaborator additions in the frontend required raw UUID text inputs. Furthermore, there was no authoritative API to fetch team members or calculate rep performance, tempting client-side mockups or scraping.
+- **Chose**:
+  1. **Authoritative Backend Users Module (`modules/users/`)**: Implemented `GET /api/users` and `GET /api/users/:id` with strict multi-tenant team scoping (`teamId`), excluding password hashes and sensitive authentication fields.
+  2. **Computed Profile Statistics**: `/api/users/:id` computes active open deals, pipeline value, won deals, and total deals server-side directly in PostgreSQL using Prisma aggregations.
+  3. **IDOR & Authorization Preservation**: Requesting a user outside the requester's team returns 404 Not Found. On `/users/:id`, deals are queried via `GET /api/deals?ownerId=:id`, preserving backend row-level visibility filters.
+  4. **Reusable `UserSelector` Component**: Replaced all raw UUID text inputs with a searchable, role-aware dropdown combobox (`UserSelector`) showing avatar initials, name, and role badge.
+  5. **Collaborator Business Invariants**: Validated that managers cannot be added as deal collaborators (collaborators must have `SALES_REP` role) and deal owners cannot collaborate on their own deals.
+- **Rejected**:
+  - Asking end users to memorize or copy-paste 36-character UUID strings.
+  - Inventing mock employee CRUD (hire, fire, edit) when the CRM only needs an authoritative directory of current team members.
+  - Fetching the entire team deals dataset into the browser and filtering client-side on `/users/:id`.
+- **Why**:
+  - Prevents IDOR data leakage while providing an intuitive, polished enterprise CRM experience.
+  - Keeps server state authoritative and query performance high.
+
+---
+
+## Decision 22: Read-Only Trash Archive, Indian Rupee (INR / ₹) Standard & Global Portal Dialogs
+
+- **Context / Problem**:
+  1. Soft-deleted deals needed dedicated visibility without fabricating unbacked "restore" business logic.
+  2. The application required unified Indian Rupee (INR / `₹`) formatting with Indian number system units (`Cr`, `L`, `K`) while leaving database numeric decimals exact.
+  3. Dialog and AlertDialog overlays were rendered inline in parent JSX, causing clipping or backdrop issues when parents had CSS transforms.
+- **Chose**:
+  1. **Read-Only Trash Archive (`/trash`)**: Backed by existing `GET /api/deals/trash`. Displays an informative audit banner explaining that records are soft-deleted and preserved for compliance.
+  2. **INR / ₹ Centralized Formatting**: Updated `formatCurrency` and `formatCompactCurrency` in `lib/utils.ts` to `en-IN` / `INR` format (`₹12,50,000.00`, `₹12.5L`, `₹1.2Cr`). Removed all `$` and `USD` text labels across the frontend.
+  3. **Global Portals (`createPortal(..., document.body)`)**: Updated `dialog.tsx` and `alert-dialog.tsx` to mount overlays directly to `document.body` and lock body scrolling while open.
+  4. **Collapsible Sidebar & Sonner Toasts**: Collapsible desktop sidebar (`w-64` ↔ `w-16`) persisted in Zustand with icon tooltips when collapsed, accompanied by Sonner toast alerts for all mutations.
+- **Why**:
+  - Guarantees flawless visual presentation, complete consistency in currency, and zero modal clipping bugs.

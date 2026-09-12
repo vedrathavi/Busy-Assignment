@@ -124,6 +124,25 @@ export class CompanyController {
       next(error);
     }
   }
+
+  /**
+   * GET /api/companies/similar
+   */
+  async findSimilar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) throw new UnauthorizedError('Authentication required');
+
+      const name = typeof req.query.name === 'string' ? req.query.name : '';
+      const matches = await companyService.findSimilarCompanies(req.user, name);
+
+      res.status(200).json({
+        success: true,
+        data: matches,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const companyController = new CompanyController();

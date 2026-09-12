@@ -35,6 +35,8 @@ Each significant entry records:
 | **Phase 7** (Prompt 12) | Bulk Operations & Pipeline CSV Export | Implement Manager bulk reassign (`POST /api/deals/bulk/reassign`), Manager bulk advance (`POST /api/deals/bulk/advance`), Pipeline CSV export (`GET /api/deals/export`), partial success handling, existing transition policy reuse, previousStage preservation, and 16 Vitest tests. |
 | **Phase 8** (Prompt 13) | Deal Search, Filtering, Sorting & Pagination | Implement database-level search (`title` OR `company.name` case-insensitive), strict filters (`companyId`, `stage`, `ownerId`), deterministic sorting (`value`, `expectedCloseDate`, `updatedAt` + `id`), server-side pagination (`page`, `pageSize`, `limit`), pre-pagination `total`, and 30 Vitest tests. |
 | **Phase 9** (Prompt 14) | Dashboard Pipeline Metrics & Analytics | Implement database-level dashboard API (`GET /api/dashboard`), open deals, exact Decimal weighted pipeline, won/lost this month (`closedAt`), 4-stage distribution, safe owner breakdown, 8-week win trend (ISO Monday-Sunday half-open intervals), and 12 Vitest tests. |
+| **Phase 10** (Prompt 15) | Notification Foundation & Overdue Deal Alerts | Implement polymorphic notification architecture (`Notification` with `DEAL_OVERDUE` discriminator, composed with `DealAlert`), dynamic overdue alert derivation (`GET /api/alerts`), badge count (`GET /api/alerts/count`), atomic idempotent dismissal (`POST /api/alerts/:dealId/dismiss`), and 22 Vitest tests. |
+| **Phase 11** (Prompt 16) | Frontend Foundation & Design System | Implement shadcn/ui design tokens, CSS variables, Google Sans typography, centralized Axios client with token interceptor and 401 handling, AuthProvider session restoration, AppShell, responsive Sidebar & MobileNav, public/protected route guards, feedback primitives (`PageLoader`, `SkeletonLoader`, `EmptyState`, `ErrorState`, `NotFoundPage`), and clean placeholders for `/dashboard`, `/companies`, `/deals`, `/alerts`. |
 
 ---
 
@@ -714,3 +716,101 @@ Each significant entry records:
   - Full test suite: 198 tests passed.
 - **Corrections or rejected suggestions**: None.
 - **Final outcome**: Phase 10 is 100% completed, tested, audited, and ready for commit.
+
+---
+
+## 2026-09-11 - Prompt 16 - Phase 11: Frontend Foundation & Design System
+
+- **Problem / Task**: Implement Phase 11: Frontend Foundation & Design System strictly scoped to design tokens, shadcn/ui primitives, centralized Axios client, JWT authentication & session hydration, responsive application shell (collapsible desktop/tablet sidebar and mobile Sheet drawer), protected/public routing, feedback primitives, and clean placeholder pages without implementing actual CRM business functionality.
+- **User Intent**:
+  - Setup shadcn/ui design tokens with HSL CSS variables, Google Sans / Plus Jakarta Sans font stack, and `@/` path alias.
+  - Build reusable UI primitives: `Button`, `Card`, `Badge`, `Input`, `Label`, `Avatar`, `Separator`, `Skeleton`, `Sheet`, `DropdownMenu`, `Tooltip`, `Table`.
+  - Create centralized Axios client with `VITE_API_URL` configuration, Bearer token injection, centralized error parsing, and decoupled `authStorage` with subscriber pattern for 401 handling.
+  - Implement `AuthProvider`, `useAuth()`, session restoration from `GET /api/auth/me`, token persistence in `localStorage`, and role helpers (`isManager`, `isSalesRep`).
+  - Create modern `LoginPage` with validation, error alert, and dev-only demo presets gated strictly behind `VITE_ENABLE_DEMO_LOGIN`.
+  - Build responsive `AppShell`: `Sidebar` (Dashboard, Companies, Deals, Alerts), `Header` with mobile menu trigger, search placeholder, role badge, and user dropdown menu, `MobileNav` with Sheet drawer. Zero horizontal overflow down to 375px viewport width.
+  - Set up routing: `/login`, `/` (redirect to `/dashboard`), `/dashboard`, `/companies`, `/deals`, `/alerts`, `*` (`NotFoundPage`).
+  - Create feedback primitives: `PageLoader`, `SkeletonLoader`, `EmptyState`, `ErrorState`, `NotFoundPage`.
+  - Create minimal placeholders for `/dashboard`, `/companies`, `/deals`, and `/alerts`.
+  - Do NOT implement actual Dashboard metrics, Company CRUD, Deal CRUD, lifecycle UI, collaboration UI, bulk operations, CSV UI, or alerts logic.
+  - Do NOT use fixed px sizing; use relative rem/em/Tailwind fluid sizing.
+- **Prompt given to ChatGPT**:
+  > *"Phase 11 plan is approved with scope corrections: Keep strictly to Frontend design system/foundation, API client, Authentication, Application shell/navigation, Protected/public routing, Shared loading/error/empty primitives, Placeholder CRM pages. Use shadcn/ui extensively, Tailwind layout, lucide-react icons, relative sizing in rem/em, zero horizontal overflow at 375px. Do NOT implement actual business functionality yet."*
+- **Important ChatGPT recommendation**:
+  - Decoupled `authStorage` with subscriber pattern so Axios 401 interceptor does not directly couple to React state.
+  - Used HSL CSS variables for light/dark theme readiness and clean semantic tokens.
+  - Gated demo login quick-fill strictly behind `import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEMO_LOGIN === 'true'`.
+  - Created modular feedback primitives (`PageLoader`, `SkeletonLoader`, `EmptyState`, `ErrorState`, `NotFoundPage`) for reuse in subsequent phases.
+- **Actual prompt sent to IDE / Code Assistant**:
+  > Implement Phase 11: Configure `tsconfig.json`, `vite.config.ts`, `tailwind.config.js`, `index.css`, `utils.ts`, shadcn UI primitives, `client.ts`, `auth-storage.ts`, `auth.types.ts`, `auth.api.ts`, `AuthContext.tsx`, `LoginPage.tsx`, `Sidebar.tsx`, `Header.tsx`, `MobileNav.tsx`, `AppShell.tsx`, `PageLoader.tsx`, `SkeletonLoader.tsx`, `EmptyState.tsx`, `ErrorState.tsx`, `NotFoundPage.tsx`, placeholder pages, `AppRoutes.tsx`, and `App.tsx`.
+- **What IDE / Code Assistant implemented**:
+  - `frontend/tsconfig.json` & `vite.config.ts`: Configured `@/` path alias pointing to `./src`.
+  - `frontend/src/index.css` & `tailwind.config.js`: Setup complete HSL design tokens, typography, custom scrollbars, and keyframe animations.
+  - `frontend/src/lib/utils.ts`: Created `cn()` utility (`clsx` + `tailwind-merge`).
+  - `frontend/src/components/ui/`: Created all 12 core shadcn/ui primitives.
+  - `frontend/src/lib/api/client.ts` & `auth-storage.ts`: Created centralized Axios client with Bearer auth interceptor, 401 token clearing with subscriber pattern, and `getApiErrorMessage()`.
+  - `frontend/src/features/auth/`: Built `auth.types.ts`, `auth.api.ts`, `AuthContext.tsx`, and modern responsive `LoginPage.tsx`.
+  - `frontend/src/components/layout/`: Built `Sidebar.tsx`, `Header.tsx`, `MobileNav.tsx`, and `AppShell.tsx`.
+  - `frontend/src/components/common/`: Built `PageLoader.tsx`, `SkeletonLoader.tsx`, `EmptyState.tsx`, `ErrorState.tsx`, and `NotFoundPage.tsx`.
+  - `frontend/src/pages/`: Built clean placeholder views for `DashboardPage.tsx`, `CompaniesPage.tsx`, `DealsPage.tsx`, and `AlertsPage.tsx`.
+  - `frontend/src/routes/`: Built `ProtectedRoute.tsx`, `PublicRoute.tsx`, and `AppRoutes.tsx`.
+  - `frontend/src/App.tsx`: Wired up `QueryClientProvider`, `AuthProvider`, `BrowserRouter`, and `AppRoutes`.
+  - Updated `docs/plan.md`, `docs/decisions.md` (Decision 20), and `docs/ai-prompts.md`.
+- **Human review / testing**:
+  - `npx tsc --noEmit` in `frontend/`: Clean compilation with 0 errors.
+  - `npm run build` in `frontend/`: Production build succeeded in 5.51s generating optimized static bundle (`dist/`).
+  - Backend integration test suite: 100% passing (202 / 202 tests).
+- **Corrections or rejected suggestions**:
+  - Removed deprecated `baseUrl` in `tsconfig.json` for bundler mode compatibility.
+  - Updated `Avatar` component with flexible composite subcomponents (`AvatarFallback`, `AvatarImage`) while maintaining single-prop `<Avatar fallback="..." />` compatibility.
+  - Replaced fixed px sizing with relative rem/em and Tailwind classes for fluid responsiveness.
+- **Final outcome**: Phase 11 is 100% completed, fully verified, and ready for review.
+
+---
+
+## 2026-09-12 - Prompt 17 - Phase 12: Interactive CRM Features & Companies UI
+
+- **Problem / Task**: Implement interactive CRM frontend features: Company CRUD & detail page, Deal CRUD & detail drawer/page, stage progression stepper, backward regressive reason prompt, manager reopen, immutable audit history timeline, collaborator management, bulk actions, CSV export, and dashboard analytics charts.
+- **User Intent**:
+  - Connect frontend components directly to authoritative backend APIs with TanStack Query and Zustand.
+  - Implement full company detail view with associated deals, archive/restore toggle, and duplicate detection.
+  - Maintain server-side authorization boundaries; reps only see and act on deals they own or collaborate on.
+- **What IDE / Code Assistant implemented**:
+  - `frontend/src/features/companies/`: `companies.api.ts`, `companies.types.ts`, `useCompanies.ts`.
+  - `frontend/src/features/deals/`: `deals.api.ts`, `deals.types.ts`, `useDeals.ts`.
+  - `frontend/src/pages/`: Built `CompaniesPage.tsx`, `CompanyDetailPage.tsx`, `DealsPage.tsx`, `DealDetailPage.tsx`, `DashboardPage.tsx`, and `AlertsPage.tsx`.
+  - Recharts visual charts for stage distribution and 8-week win rate trends.
+- **Final outcome**: Phase 12 is fully integrated, type-safe, and operational.
+
+---
+
+## 2026-09-12 - Prompt 18 - Phase 13: CRM Polish, Team Directory, Scoped User Profiles & Zero-UUID UX
+
+- **Problem / Task**: Implement Phase 13: Authoritative team users module (`GET /api/users` & `GET /api/users/:id`), eliminate all raw UUID inputs across the frontend with a reusable `UserSelector` combobox, multiple collaborators avatar stack in the Deals table and interactive removal on Deal Detail, Indian Rupee (INR / ₹) standard formatting across all pages, Read-Only Trash view (`/trash`), Team Directory (`/users`), Scoped User Profile (`/users/:id`), collapsible sidebar with Zustand persistence, and Sonner toasts.
+- **User Intent**:
+  - For `/users/:id`, do NOT fetch the entire deal dataset and filter it client-side. Re-use server-scoped `GET /api/deals?ownerId=:id`.
+  - Preserve visibility authorization: Managers view selected user's deals, Sales Reps only receive deals they are authorized to see according to existing visibility policy. No IDOR vulnerabilities.
+  - No human should ever type or know a 36-character UUID string in any CRM workflow.
+  - No fake employee CRUD; strictly an authoritative team directory.
+  - All modals must be mounted to `document.body` with `createPortal` to prevent CSS transform backdrop clipping.
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/users/`: `user.types.ts`, `user.validator.ts`, `user.repository.ts`, `user.policy.ts`, `user.service.ts`, `user.controller.ts`, `user.routes.ts`.
+  - `backend/src/app.ts`: Mounted `/api/users`.
+  - `backend/src/__tests__/users.test.ts`: 9 automated integration tests covering directory listing, role filtering, safe fields (no passwordHash), profile statistics, cross-team IDOR isolation (404), and collaborator rules (no managers as collaborators, no owner as collaborator).
+  - `frontend/src/lib/utils.ts`: Updated `formatCurrency` and `formatCompactCurrency` to `en-IN` / `INR` format (`₹12,50,000.00`, `₹12.5L`, `₹1.2Cr`).
+  - `frontend/src/components/ui/dialog.tsx` & `alert-dialog.tsx`: Global fix with `createPortal(..., document.body)` and body scroll lock.
+  - `frontend/src/components/ui/sonner.tsx` & `App.tsx`: Mounted Lovable-styled `<Toaster />`.
+  - `frontend/src/components/common/UserSelector.tsx`: Searchable role-aware dropdown displaying avatar initials, full name, and role badge.
+  - `frontend/src/pages/DealsPage.tsx`: Replaced raw UUID in Bulk Reassign with `UserSelector`, added manager Deal Owner assignment via `UserSelector`, added Collaborators avatar stack (`[PS] [MS] [+2]`) with hover tooltip, and Sonner mutation toasts.
+  - `frontend/src/pages/DealDetailPage.tsx`: Replaced owner reassign UUID and add collaborator UUID with `UserSelector`, and added Sonner mutation toasts.
+  - `frontend/src/pages/UsersPage.tsx`: `/users` team directory with search, role filters, and profile cards.
+  - `frontend/src/pages/UserDetailPage.tsx`: `/users/:id` profile with 4 KPI stat cards and server-scoped deals table query (`ownerId: id`).
+  - `frontend/src/pages/TrashPage.tsx`: `/trash` read-only soft-deleted deals table powered by `GET /api/deals/trash`.
+  - `frontend/src/components/layout/Sidebar.tsx` & `AppShell.tsx`: Collapsible desktop sidebar (`w-64` ↔ `w-16`) persisted via Zustand with icon tooltips and toggle button.
+  - Updated `docs/decisions.md` (Decisions 21, 22), `docs/plan.md`, and `docs/ai-prompts.md`.
+- **Human review / testing**:
+  - `npx tsc --noEmit` in `frontend/`: 0 errors.
+  - `npm run build` in `frontend/`: Production bundle built successfully with 0 errors.
+  - `backend/src/__tests__/users.test.ts`: 9/9 tests passed (100%).
+  - Full backend test suite passing.
+- **Final outcome**: Phase 13 is 100% completed, fully verified, and ready for commit.
