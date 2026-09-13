@@ -1,7 +1,42 @@
-import { UserRole } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
 
 export class CompanyPolicy {
+  /**
+   * Constructs the database-level Prisma visibility filter.
+   * - Manager: Full team visibility.
+   * - Sales Rep: Companies owned OR companies with deals they own/collaborate on within their team.
+   */
+  buildCompanyVisibilityFilter(user: AuthUser): Prisma.CompanyWhereInput {
+    if (user.role === UserRole.MANAGER) {
+      return { teamId: user.teamId };
+    }
+
+    return {
+      teamId: user.teamId,
+      OR: [
+        { ownerId: user.id },
+        {
+          deals: {
+            some: {
+              teamId: user.teamId,
+              OR: [
+                { ownerId: user.id },
+                {
+                  collaborators: {
+                    some: {
+                      userId: user.id,
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+  }
+
   /**
    * Evaluates if the user has permission to create a company with the given owner.
    * - A Sales Rep can only create a company owned by themselves.

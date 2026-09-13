@@ -4,6 +4,24 @@ export interface CompanyOwnerSummary {
   email: string;
 }
 
+export interface AuthorizedSimilarCompany {
+  id: string;
+  name: string;
+  industry: string;
+  authorized: true;
+  owner: CompanyOwnerSummary;
+  activeDealsCount: number;
+}
+
+export interface RestrictedSimilarCompany {
+  id: string;
+  name: string;
+  industry: string;
+  authorized: false;
+}
+
+export type SimilarCompanyResult = AuthorizedSimilarCompany | RestrictedSimilarCompany;
+
 export interface CompanyResponse {
   id: string;
   teamId: string;

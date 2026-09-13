@@ -1,6 +1,7 @@
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma';
 import { AuthUser } from '../auth/auth.types';
+import { companyPolicy } from './company.policy';
 import {
   CompanyListQuery,
   CompanyListResponse,
@@ -40,33 +41,7 @@ export class CompanyRepository {
    * - Sales Rep: Companies owned OR companies with deals they own/collaborate on within their team.
    */
   private buildVisibilityFilter(user: AuthUser): Prisma.CompanyWhereInput {
-    if (user.role === UserRole.MANAGER) {
-      return { teamId: user.teamId };
-    }
-
-    return {
-      teamId: user.teamId,
-      OR: [
-        { ownerId: user.id },
-        {
-          deals: {
-            some: {
-              teamId: user.teamId,
-              OR: [
-                { ownerId: user.id },
-                {
-                  collaborators: {
-                    some: {
-                      userId: user.id,
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
-      ],
-    };
+    return companyPolicy.buildCompanyVisibilityFilter(user);
   }
 
   /**

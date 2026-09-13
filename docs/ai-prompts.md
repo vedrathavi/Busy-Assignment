@@ -43,6 +43,8 @@ Each significant entry records:
 | **Phase 16** (Prompt 22) | Restrict Bulk Deal Operations UI to Managers | Remove bulk selection checkboxes and toolbar for Sales Reps and fix Vitest test transform cache. |
 | **Phase 17** (Prompt 23) | Split-Screen Auth & Enterprise Provisioning | Redesign 50-50 split-screen login/signup with 3D floating CRM dashboard preview and preserve enterprise provisioning model. |
 | **Phase 18** (Prompt 24) | Manager Bulk Advance UX & Toaster Feedback | Implement Sonner toaster-based feedback for Manager Bulk Advance, per-deal Negotiation blocker messages, duplicate submission prevention, and query invalidation. |
+| **Addon Phase 1** (Prompt 25) | Deal Activity Notifications | Persistent in-app notifications for deal stakeholders via lightweight 30 s count polling, server-side recipient resolution, and a dual-tab Activity & Alerts page. |
+| **Bug Fix** (Prompt 26) | Duplicate Detection Authorization Leak | Fix `GET /api/companies/similar` leaking protected fields (owner, deal count) to unrelated Sales Reps; enforce server-side authorized vs. restricted response shape; update frontend to render safe restricted cards with no View action. |
 
 ---
 
@@ -1037,3 +1039,55 @@ Each significant entry records:
   - `npm run build` in `frontend/`: Exited with code 0 (bundle built successfully).
   - Zero database resets or seeds performed; existing dev data completely preserved.
 - **Final outcome**: Seamless, high-performance Deal Activity Notifications addon fully integrated and verified without altering existing business logic or Goal 10 Overdue alerts.
+
+---
+
+## 2026-09-13 - Prompt 26 - Bug Fix: Company Duplicate Detection Authorization Leak
+
+- **Problem / Task**:
+  When a Sales Representative who has no association with an existing company types its name into the "Create Company" form, the duplicate-detection banner correctly surfaces — that part is intentional and by design. However, the banner was also exposing protected metadata that the representative is not authorized to see: the company owner's name, the count of active deals, and a "View" button that navigated directly to the company detail page. Clicking "View" produced a blank, unauthorized-looking page because the underlying `GET /api/companies/:id` request was correctly rejected server-side (IDOR protection was intact), but the frontend had already rendered a navigation action that should never have been available in the first place.
+
+  **Core principle enforced**: duplicate discovery ≠ company access. A Sales Rep may learn that a company with a matching name already exists in their organization — for the sole purpose of preventing accidental duplication — but that discovery must not grant any access to the company's protected details, deal pipeline, or ownership information.
+
+- **User Intent** (original, informal):
+  > *"there is a bug — when a rep not associated with the company searches for the company while creating it is visible that company exist which is good and intended, but it also shows details like who owns it how many deals are there and also view option. but on clicking view it returns empty page. but it shouldn't happen right no redirect and no visible deals"*
+
+- **Formal requirement**:
+  - **Unauthorized Sales Rep**: The duplicate card shows only the company name and industry. A neutral informational message reads: *"A company with this name already exists in your organization."* No owner name, no deal count, no deal metadata, no "View" button, no navigation to the company page.
+  - **Authorized user** (Manager, company owner, or rep with deal-based visibility): The full enriched card is shown as before — company name, industry, active deal count, owner name, and a working "View" button.
+  - **Server-side enforcement**: The `GET /api/companies/similar` response must be shaped at the service layer, not conditionally hidden in React. Unauthorized users must never receive `owner` or `activeDealsCount` fields in the JSON payload. The frontend uses the `authorized` discriminant to decide which fields to render — not whether to display them.
+  - **Existing IDOR protection preserved**: `GET /api/companies/:id` continues to return 404 for unauthorized access regardless of this fix.
+
+- **Root cause**:
+  `findSimilarCompanies` in `company.service.ts` queried all team-scoped matching companies via a direct Prisma query with no visibility filter applied, and unconditionally returned `owner` and `activeDealsCount` for every result regardless of who was requesting.
+
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/companies/company.types.ts`:
+    - Added `AuthorizedSimilarCompany` (includes `owner`, `activeDealsCount`, `authorized: true`) and `RestrictedSimilarCompany` (name and industry only, `authorized: false`) interfaces, and a `SimilarCompanyResult` discriminated union type.
+  - `backend/src/modules/companies/company.repository.ts`:
+    - Changed `buildVisibilityFilter` from `private` to `public` so it can be reused by the service layer for authorization classification without duplicating logic.
+  - `backend/src/modules/companies/company.service.ts`:
+    - Rewrote `findSimilarCompanies` to: (1) fetch all team-scoped name matches (discovery, no auth filter); (2) in parallel, fetch the set of company IDs visible to the requesting user using `buildVisibilityFilter`; (3) classify each match — if in the authorized ID set → `AuthorizedSimilarCompany`; otherwise → `RestrictedSimilarCompany` with `owner` and `activeDealsCount` omitted from the response.
+  - `backend/src/__tests__/companies.test.ts`:
+    - Added test group **"8. Duplicate Detection Authorization"** with 10 integration tests covering: Manager sees full preview; company owner (Alex) sees full preview for Beacon; rep with deal-access (Priya via Deal 16) sees full preview; unrelated rep (Marcus) detects company exists; unrelated rep does not receive `owner`; unrelated rep does not receive `activeDealsCount`; result carries `authorized: false`; no protected deal metadata in payload; `GET /api/companies/:id` still returns 404 for unauthorized rep; authorized rep can still call the detail endpoint successfully.
+  - `frontend/src/features/companies/companies.types.ts`:
+    - Updated `SimilarCompany` to the matching discriminated union type.
+  - `frontend/src/pages/CompaniesPage.tsx`:
+    - Updated the similar-company dropdown item to branch on `sim.authorized`. Authorized card: full preview + "View" button. Restricted card: company name + industry + neutral informational message; no owner, no deal count, no "View" button, no `onClick` navigation.
+
+- **Human review / testing**:
+  - `npx tsc --noEmit` in `backend/`: 0 errors.
+  - `npm test` in `backend/`: All tests passed including all 10 new duplicate-detection authorization tests.
+  - `npx tsc --noEmit` in `frontend/`: 0 errors.
+  - `npm run build` in `frontend/`: Built successfully with 0 errors.
+  - `git diff --check`: Clean, 0 whitespace or formatting issues.
+  - Manual verification:
+    - **Manager**: Searched for "Beacon" → saw full preview with owner (Alex Rivera), 3 active deals, and a working View button.
+    - **Alex Rivera (company owner)**: Same — authorized preview with View button.
+    - **Marcus Chen (unrelated rep)**: Searched for "Beacon" → duplicate banner appeared; card showed "Beacon Clean Energy" and "Renewable Energy" only; neutral message: "A company with this name already exists in your organization."; no owner name, no deal count, no View button.
+    - **Marcus Chen direct URL**: Navigating to `/companies/<beacon-id>` returned the expected unauthorized state (404 from backend — IDOR protection intact).
+
+- **Corrections or rejected suggestions**:
+  - Rejected any approach that merely hid owner and deal-count fields in React while still sending them from the backend — the fix is enforced in the service response contract, not in the view layer.
+
+- **Final outcome**: The `GET /api/companies/similar` endpoint now returns a server-enforced discriminated response — authorized users receive the full enriched preview; unauthorized users receive only a minimal safe payload containing name and industry. The frontend renders the appropriate card variant accordingly. All existing authorization rules, IDOR protections, company visibility scoping, and business logic remain completely unchanged.

@@ -9,6 +9,7 @@ import {
   CompanyListResponse,
   CompanyResponse,
   CreateCompanyInput,
+  SimilarCompanyResult,
   UpdateCompanyInput,
 } from './company.types';
 
@@ -141,14 +142,9 @@ export class CompanyService {
    * Searches for similar companies in the user's team for advisory duplicate detection.
    * Excludes soft-deleted deals from activeDealsCount.
    * Query is non-blocking, team-scoped, and case-insensitive.
+   * Returns full details for authorized companies, and restricted fields for unauthorized companies.
    */
-  async findSimilarCompanies(user: AuthUser, name?: string): Promise<Array<{
-    id: string;
-    name: string;
-    industry: string;
-    owner: { id: string; name: string; email: string };
-    activeDealsCount: number;
-  }>> {
+  async findSimilarCompanies(user: AuthUser, name?: string): Promise<SimilarCompanyResult[]> {
     const trimmed = (name || '').trim();
     if (trimmed.length < 2) {
       return [];
@@ -189,13 +185,44 @@ export class CompanyService {
       },
     });
 
-    return companies.map((c) => ({
-      id: c.id,
-      name: c.name,
-      industry: c.industry,
-      owner: c.owner,
-      activeDealsCount: c._count.deals,
-    }));
+    if (companies.length === 0) {
+      return [];
+    }
+
+    const matchingIds = companies.map((c) => c.id);
+
+    const authorizedCompanies = await prisma.company.findMany({
+      where: {
+        AND: [
+          companyPolicy.buildCompanyVisibilityFilter(user),
+          { id: { in: matchingIds } },
+        ],
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const authorizedIds = new Set(authorizedCompanies.map((c) => c.id));
+
+    return companies.map((c): SimilarCompanyResult => {
+      if (authorizedIds.has(c.id)) {
+        return {
+          id: c.id,
+          name: c.name,
+          industry: c.industry,
+          authorized: true,
+          owner: c.owner,
+          activeDealsCount: c._count.deals,
+        };
+      }
+      return {
+        id: c.id,
+        name: c.name,
+        industry: c.industry,
+        authorized: false,
+      };
+    });
   }
 
   /**

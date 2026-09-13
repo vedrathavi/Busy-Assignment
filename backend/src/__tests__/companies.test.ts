@@ -42,14 +42,7 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
   ];
 
   const resetCompanies = async () => {
-    // Clean up any dynamically created test companies (including unseeded remnants)
-    const seededCompanyIds = Object.values(COMPANIES);
-    await prisma.company.deleteMany({
-      where: { id: { notIn: seededCompanyIds } },
-    });
-    createdCompanyIds.length = 0;
-
-    // Clean up any dynamically created deals and their related records
+    // Clean up any dynamically created deals and their related records first
     const seededDealIds = [
       '30000000-0000-4000-8000-000000000001',
       '30000000-0000-4000-8000-000000000002',
@@ -91,6 +84,13 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
     await prisma.deal.deleteMany({
       where: { id: { notIn: seededDealIds } },
     });
+
+    // Clean up any dynamically created test companies (including unseeded remnants)
+    const seededCompanyIds = Object.values(COMPANIES);
+    await prisma.company.deleteMany({
+      where: { id: { notIn: seededCompanyIds } },
+    });
+    createdCompanyIds.length = 0;
 
     // Reset any modified seeded company states
     await prisma.company.update({
@@ -777,6 +777,138 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
       expect(res.status).toBe(403);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toContain('You do not have permission to restore this company');
+    });
+  });
+
+  // ==========================================================================
+  // 8. Duplicate Detection Authorization & Response Safety
+  // ==========================================================================
+  describe('8. Duplicate Detection Authorization & Response Safety', () => {
+    it('44. should return full company details with authorized: true when Manager searches for similar companies', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch.authorized).toBe(true);
+      expect(beaconMatch.owner).toBeDefined();
+      expect(beaconMatch.owner.name).toBe('Alex Rivera');
+      expect(typeof beaconMatch.activeDealsCount).toBe('number');
+    });
+
+    it('45. should return full company details with authorized: true when company owner (Alex) searches', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${rep1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch.authorized).toBe(true);
+      expect(beaconMatch.owner).toBeDefined();
+      expect(beaconMatch.owner.name).toBe('Alex Rivera');
+      expect(typeof beaconMatch.activeDealsCount).toBe('number');
+    });
+
+    it('46. should return full company details with authorized: true when deal owner (Priya) searches', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${rep2Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch.authorized).toBe(true);
+      expect(beaconMatch.owner).toBeDefined();
+      expect(typeof beaconMatch.activeDealsCount).toBe('number');
+    });
+
+    it('47. should return authorized: false when an unauthorized Sales Rep (Marcus) searches for similar company', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${rep3Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch.authorized).toBe(false);
+    });
+
+    it('48. should not contain owner field in restricted duplicate response for unauthorized Sales Rep', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${rep3Token}`);
+
+      expect(res.status).toBe(200);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch.owner).toBeUndefined();
+    });
+
+    it('49. should not contain activeDealsCount in restricted duplicate response for unauthorized Sales Rep', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${rep3Token}`);
+
+      expect(res.status).toBe(200);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch.activeDealsCount).toBeUndefined();
+    });
+
+    it('50. should strictly match the exact restricted response schema without leaking extra fields', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${rep3Token}`);
+
+      expect(res.status).toBe(200);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch).toEqual({
+        id: COMPANIES.beacon,
+        name: 'Beacon Clean Energy',
+        industry: 'Renewable Energy',
+        authorized: false,
+      });
+    });
+
+    it('51. should not expose any deals or deal metadata in the restricted response', async () => {
+      const res = await request(app)
+        .get('/api/companies/similar?name=Beacon')
+        .set('Authorization', `Bearer ${rep3Token}`);
+
+      expect(res.status).toBe(200);
+      const beaconMatch = res.body.data.find((c: any) => c.id === COMPANIES.beacon);
+      expect(beaconMatch).toBeDefined();
+      expect(beaconMatch.deals).toBeUndefined();
+      expect(beaconMatch._count).toBeUndefined();
+    });
+
+    it('52. should return 404 when unauthorized Sales Rep attempts direct GET /api/companies/:id', async () => {
+      const res = await request(app)
+        .get(`/api/companies/${COMPANIES.beacon}`)
+        .set('Authorization', `Bearer ${rep3Token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toBe('Company not found');
+    });
+
+    it('53. should return 200 when authorized Sales Rep performs direct GET /api/companies/:id', async () => {
+      const res = await request(app)
+        .get(`/api/companies/${COMPANIES.beacon}`)
+        .set('Authorization', `Bearer ${rep1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.id).toBe(COMPANIES.beacon);
+      expect(res.body.data.name).toBe('Beacon Clean Energy');
     });
   });
 });

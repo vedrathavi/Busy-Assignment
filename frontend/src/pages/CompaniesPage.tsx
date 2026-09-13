@@ -643,12 +643,51 @@ export function CompaniesPage() {
                       <div className="px-2 py-1 text-[11px] text-[#5f5f5d] border-b border-[#eceae4]/70 mb-1">
                         Existing accounts in your organization:
                       </div>
-                      {similarCompanies.map((sim) => (
-                        <div
-                          key={sim.id}
-                          className="flex items-center justify-between gap-2.5 p-2.5 rounded-md bg-white border border-[#eceae4] text-xs hover:border-[#1c1c1c]/30 transition-colors"
-                        >
-                          <div className="min-w-0 flex-1">
+                      {similarCompanies.map((sim) =>
+                        sim.authorized ? (
+                          <div
+                            key={sim.id}
+                            className="flex items-center justify-between gap-2.5 p-2.5 rounded-md bg-white border border-[#eceae4] text-xs hover:border-[#1c1c1c]/30 transition-colors"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-[#1c1c1c] truncate">{sim.name}</span>
+                                {sim.industry && (
+                                  <span className="rounded-[4px] bg-[#eceae4] px-1.5 py-0.5 text-[9px] text-[#5f5f5d]">
+                                    {sim.industry}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-[#5f5f5d] mt-1">
+                                <span>
+                                  {sim.activeDealsCount} active {sim.activeDealsCount === 1 ? 'deal' : 'deals'}
+                                </span>
+                                {sim.owner && (
+                                  <span className="ml-1.5">
+                                    • Owner: <strong className="text-[#1c1c1c] font-medium">{sim.owner.name}</strong>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setIsCreateOpen(false);
+                                navigate(`/companies/${sim.id}`);
+                              }}
+                              className="h-7 text-[11px] shrink-0 text-[#1c1c1c] border-[#eceae4] hover:bg-[#eceae4] gap-1 px-2.5"
+                            >
+                              <FiExternalLink className="h-3 w-3" />
+                              View
+                            </Button>
+                          </div>
+                        ) : (
+                          <div
+                            key={sim.id}
+                            className="p-2.5 rounded-md bg-white border border-[#eceae4] text-xs"
+                          >
                             <div className="flex items-center gap-1.5">
                               <span className="font-semibold text-[#1c1c1c] truncate">{sim.name}</span>
                               {sim.industry && (
@@ -658,31 +697,11 @@ export function CompaniesPage() {
                               )}
                             </div>
                             <div className="text-[10px] text-[#5f5f5d] mt-1">
-                              <span>
-                                {sim.activeDealsCount} active {sim.activeDealsCount === 1 ? 'deal' : 'deals'}
-                              </span>
-                              {sim.owner && (
-                                <span className="ml-1.5">
-                                  • Owner: <strong className="text-[#1c1c1c] font-medium">{sim.owner.name}</strong>
-                                </span>
-                              )}
+                              A company with this name already exists in your organization.
                             </div>
                           </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setIsCreateOpen(false);
-                              navigate(`/companies/${sim.id}`);
-                            }}
-                            className="h-7 text-[11px] shrink-0 text-[#1c1c1c] border-[#eceae4] hover:bg-[#eceae4] gap-1 px-2.5"
-                          >
-                            <FiExternalLink className="h-3 w-3" />
-                            View
-                          </Button>
-                        </div>
-                      ))}
+                        )
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

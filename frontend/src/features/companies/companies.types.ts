@@ -5,13 +5,21 @@ export interface CompanyOwnerSummary {
   role?: string;
 }
 
-export interface SimilarCompany {
-  id: string;
-  name: string;
-  industry: string;
-  owner: CompanyOwnerSummary;
-  activeDealsCount: number;
-}
+export type SimilarCompany =
+  | {
+      id: string;
+      name: string;
+      industry: string;
+      authorized: true;
+      owner: CompanyOwnerSummary;
+      activeDealsCount: number;
+    }
+  | {
+      id: string;
+      name: string;
+      industry: string;
+      authorized: false;
+    };
 
 export interface Company {
   id: string;
