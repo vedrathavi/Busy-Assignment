@@ -3,23 +3,41 @@ import {
   ActivityNotificationItem,
   NotificationCountResponse,
   NotificationListQuery,
+  NotificationPagination,
 } from './notifications.types';
 
 export async function getNotificationsApi(
   query: NotificationListQuery = {}
-): Promise<ActivityNotificationItem[]> {
+): Promise<{ notifications: ActivityNotificationItem[]; pagination: NotificationPagination }> {
   const params: Record<string, any> = {};
   if (query.status && query.status !== 'all') {
     params.status = query.status;
+  }
+  if (query.page) {
+    params.page = query.page;
   }
   if (query.limit) {
     params.limit = query.limit;
   }
 
-  const response = await apiClient.get<ApiResponse<ActivityNotificationItem[]>>('/notifications', {
+  const response = await apiClient.get<
+    ApiResponse<ActivityNotificationItem[]> & { pagination?: NotificationPagination }
+  >('/notifications', {
     params,
   });
-  return response.data.data || [];
+
+  const notifications = response.data.data || [];
+  const pagination = response.data.pagination || {
+    total: notifications.length,
+    page: query.page || 1,
+    limit: query.limit || 20,
+    totalPages: 1,
+  };
+
+  return {
+    notifications,
+    pagination,
+  };
 }
 
 export async function getNotificationCountApi(): Promise<NotificationCountResponse> {

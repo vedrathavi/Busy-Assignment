@@ -601,3 +601,111 @@ This document records the major architectural, domain, and technology decisions 
   - Provides a complete, responsive activity feed for collaborative deal closing while strictly adhering to lightweight polling, preserving database contents, and isolating activity notifications from overdue alerts.
 - **Trade-offs**:
   - Updates appear within 30 seconds or on tab focus rather than sub-second WebSocket pushes, which avoids persistent server connections and keeps backend CPU/memory minimal.
+
+---
+
+## Decision 30: Deal Tasks & Follow-ups as a Lightweight Sales Work Queue (Phase 2 CRM Addon)
+
+- **Context / Problem**:
+  - We needed to implement Phase 2 of the optional CRM addon: **Deal Tasks & Follow-ups** (an actionable sales work queue centered around deals).
+  - Requirements:
+    1. A single unified `Task` entity with calendar-only due date semantics (`@db.Date`), explicit priority levels (`LOW`, `MEDIUM`, `HIGH`), and simple binary lifecycle (`OPEN` vs `COMPLETED`).
+    2. Atomicity & transactional integrity for task creation, reassignment, and completion with optional completion notes (which must write to the deal's immutable history as `NOTE_ADDED` and trigger `TASK_COMPLETED` notifications).
+    3. Strict server-side authorization:
+       - **Visibility**: Manager, Deal Owner, Deal Collaborator, Current Task Assignee (assignees retain visibility even if their deal collaborator role is subsequently removed).
+       - **Management**: Manager, Deal Owner, Task Creator, Task Assignee.
+       - **Assignment**: Manager → any same-team Sales Rep; Deal Owner/Collaborator → self or active deal collaborator (unrelated reps strictly rejected).
+    4. Lifecycle boundaries: Company archival does not affect tasks; soft-deleted deals exclude tasks from task lists while preserving underlying task records for audit integrity.
+    5. No WebSockets/SSE, no external job runners, no database wiping/re-seeding, and non-destructive schema migration.
+- **Chose**:
+  1. **Calendar Date Semantics (`dueDate DateTime @db.Date`)**:
+     - Modeled `dueDate` with `@db.Date` in Prisma, storing pure dates without UTC time offsets.
+     - Normalized `time=today`, `time=overdue`, and `time=upcoming` queries using current date strings (`YYYY-MM-DD`), preventing timezone boundary drift.
+  2. **Transactional Business Logic via Prisma `$transaction`**:
+     - `createTask`: Writes Task record and atomically creates `TASK_ASSIGNED` notification for assignee if different from creator.
+     - `updateTask`: Updates Task record and atomically creates `TASK_ASSIGNED` notification if assignee changed.
+     - `completeTask`: Updates `completedAt`, optionally inserts a `DealHistory` record of type `NOTE_ADDED`, and atomically creates `TASK_COMPLETED` notification for task creator if completed by another rep.
+  3. **Multi-Faceted Access Control Matrix**:
+     - Implemented `task.policy.ts` defining `canViewTask`, `canManageTask`, `canDeleteTask`, and `canAssignTaskToUser`.
+     - Repository visibility queries construct an `OR` filter combining manager team scope, deal ownership, deal collaborator assignments, and direct task assignments.
+  4. **Dual-Context UI Design (Global Work Queue & Deal Detail Tab)**:
+     - Global `/tasks` page featuring filter pill bars (`scope`, `status`, `time`, `priority`), scanning visual hierarchy with priority badges, overdue urgency indicators, quick-complete checkboxes, and complete-with-note dialogs.
+     - `DealDetailPage.tsx` tab for "Tasks & Follow-ups" with open task counter badge, direct action items list, and contextual deal-linked task creation dialog.
+     - Updated sidebar navigation with `FiCheckSquare` icon and responsive routing.
+- **Why**:
+  - Treats tasks as high-value sales action items linked directly to deals and pipeline momentum rather than a detached todo list, enforcing strict enterprise access controls and atomic database transactions.
+- **Trade-offs**:
+  - Binary lifecycle (`OPEN` vs `COMPLETED`) avoids complex Kanban column overhead and keeps sales reps focused purely on completing deal follow-ups.
+
+---
+
+## Decision 31: Task & Notification UX Refinement (Dual Task Perspectives, Completion Note Surfacing, and Server-Side Pagination)
+
+- **Context / Problem**:
+  - Sales reps and managers needed two distinct task perspectives:
+    1. **Assigned to me**: Tasks where the current user is the assignee (`where: { assignedToId: user.id }`).
+    2. **Assigned by me**: Tasks created and delegated by the current user to collaborators (`where: { createdById: user.id }`).
+    3. **Team tasks**: Team-wide tasks visible to managers (`where: { teamId: user.teamId }`).
+  - When collaborators completed tasks with notes, task assigners could not see the collaborator's completion message in notifications.
+  - As task and notification volumes grow, both datasets require server-side pagination (`LIMIT` / `OFFSET`) and lightweight notification bell dropdowns (fetching only 5 recent items).
+  - Explicit non-destructive rules: no database resets/reseeds/truncations, no notification deletions on read, and exact-ID cleanup in test suites.
+- **Chose**:
+  1. **Dual Task Perspectives & Dynamic Context in UI**:
+     - Added `scope=assigned_to_me`, `scope=assigned_by_me`, and `scope=team` filters in `task.repository.ts` and `task.validator.ts`.
+     - `TaskCard.tsx` adapts its metadata row based on perspective:
+       - In "Assigned to me": emphasizes `Assigned by: <Creator Name>`.
+       - In "Assigned by me": emphasizes `Assigned to: <Assignee Name>`.
+       - In "Team tasks": shows `Assigned to: <Assignee Name> (by <Creator Name>)`.
+     - Added server-side `summary` metrics (`open`, `dueToday`, `overdue`) computed transactionally during task queries and displayed as clean badges in the page header.
+  2. **Collaborator Completion Note Surfacing in Notifications**:
+     - `task.service.ts` incorporates `input.completionNote` into `TASK_COMPLETED` notification messages (`"${actor.name} completed "${task.title}":\n"${note}"`).
+     - Frontend `NotificationBell.tsx` and `AlertsPage.tsx` format the completion note into a dedicated, styled quote block.
+  3. **Server-Side Pagination & Lightweight Bell**:
+     - `getUserActivityNotifications` supports `page` and `limit` with `{ total, page, limit, totalPages }` pagination metadata.
+     - `NotificationBell.tsx` requests strictly 5 recent notifications (`limit: 5`).
+     - `AlertsPage.tsx` implements responsive pagination controls (`Previous` / `Next`) with 20 items per page.
+  4. **Retained State Semantics (No Deletion on Read)**:
+     - Preserved `readAt` timestamp state for notifications with individual and bulk mark-as-read actions; no "clear all" or destructive deletes.
+- **Why**:
+  - Completes the collaboration loop between managers, deal owners, and sales reps while optimizing network payload sizes, maintaining strict backend authorization, and preserving database integrity.
+- **Trade-offs**:
+  - Requires passing the active perspective down to task cards to dynamically adapt the assignment context label without duplicating task card components.
+
+---
+
+## Decision 32: Multi-Assignee Deal Tasks with Creation-Time Immutable Assignment
+
+- **Context / Problem**:
+  - Deal-related tasks often require collaborative execution among multiple deal participants (e.g., Deal Owner, technical specialists, and sales collaborators reviewing a proposal, pricing, or contract terms simultaneously).
+  - Single-assignee models forced duplicate task creation or out-of-band communication.
+  - However, permitting post-creation assignee modifications (add/remove/reassign) creates accountability ambiguity, audit trail loss, race conditions, and unnecessary UI/authorization complexity.
+  - Business Rule Established:
+    - Tasks can be assigned to **one or more authorized participants when created**.
+    - The assignee list becomes **strictly immutable immediately after creation**.
+    - No user (Manager, Deal Owner, Creator, Collaborator) can add, remove, or replace assignees post-creation. If further delegation is required later, participants create a new task.
+    - Each assignee has an independent completion state and completion note.
+    - Overall task completion is reached when all assignees complete their individual work.
+    - Reopening an individual assignment resets the overall task completion while preserving other assignees' completed status.
+- **Chose**:
+  1. **Relational `TaskAssignee` Join Model**:
+     - Modeled `TaskAssignee` with `(taskId, userId)` uniqueness, `assignedAt`, `completedAt`, and `completionNote`.
+     - Executed a non-destructive database migration backfilling all existing `Task.assignedToId` records into `TaskAssignee`.
+     - Made `TaskAssignee` the sole source of truth for task queries, filters, completion state, and dual perspectives.
+  2. **Strictly Deal-Scoped Creation-Time Authorization Boundary**:
+     - Eligible assignees for a deal task are strictly and exclusively: `Deal Owner + Active Deal Collaborators` on that specific deal ($\text{requestedAssignees} \subseteq \{\text{deal.ownerId}\} \cup \{\text{activeCollaborators}\}$).
+     - Applies uniformly to Managers, Deal Owners, and Collaborators. Managers cannot assign a deal task to a Sales Rep who is not on the deal.
+     - Rejects any request containing mixed valid and invalid assignees atomically with `403 Forbidden` without partial creation.
+     - Collaborators can assign new tasks to other collaborators and to the Deal Owner.
+     - Creator can self-assign (appearing in both "Assigned to me" and "Assigned by me").
+  3. **Strict Creation-Time Immutability**:
+     - `updateTaskSchema` rejects/omits assignee modifications; `TaskRepository.update` only modifies `title`, `description`, `priority`, and `dueDate`.
+     - `TaskFormDialog` in edit mode displays a locked, read-only list of assignees.
+     - `TaskCard` renders read-only multi-assignee avatar groups and badges without add/remove controls.
+  4. **Independent & Overall Completion**:
+     - `completeTask` records completion on the authenticated user's `TaskAssignee` record with an optional note.
+     - Overall `Task.completedAt` is updated only when zero incomplete assignees remain.
+     - `reopenTask` reopens the authenticated user's assignment and resets `Task.completedAt = null` while preserving other assignees' completions.
+- **Why**:
+  - Creation-time immutable assignment preserves accountability and audit history while still supporting collaborative delegation. Deal participants can delegate new work freely within the deal boundary, but an existing task's historical responsibility cannot be silently altered.
+- **Trade-offs**:
+  - If a team member leaves a deal or organization, remaining participants cannot remove them from existing historical tasks; instead, they create a new follow-up task.

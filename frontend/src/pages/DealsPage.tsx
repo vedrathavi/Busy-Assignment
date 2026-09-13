@@ -40,12 +40,21 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { useUIStore } from '@/store/ui.store';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  PageHeader,
+  PageHeaderHeading,
+  PageHeaderTitle,
+  PageHeaderDescription,
+  PageHeaderActions,
+} from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Avatar } from '@/components/ui/avatar';
+import { Tooltip } from '@/components/ui/tooltip';
 import {
   Table,
   TableBody,
@@ -347,25 +356,23 @@ export function DealsPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Page Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <PageHeader>
+        <PageHeaderHeading>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-[#1c1c1c] sm:text-3xl">
-              Deals Pipeline
-            </h1>
+            <PageHeaderTitle>Deals Pipeline</PageHeaderTitle>
             {data?.pagination && (
               <Badge variant="outline" className="text-xs font-normal text-[#5f5f5d] border-[#eceae4]">
                 {data.pagination.total} Total
               </Badge>
             )}
           </div>
-          <p className="text-sm text-[#5f5f5d] mt-1.5 leading-relaxed">
+          <PageHeaderDescription>
             Track active revenue opportunities, probability weights, and stage lifecycles.
-          </p>
-        </div>
+          </PageHeaderDescription>
+        </PageHeaderHeading>
 
         {/* Header Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <PageHeaderActions>
           <Button
             variant="outline"
             size="sm"
@@ -397,8 +404,8 @@ export function DealsPage() {
             <FiPlus className="h-4 w-4" />
             <span>Create Deal</span>
           </Button>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
       {bulkError && (
         <div className="rounded-[8px] border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
@@ -786,35 +793,37 @@ export function DealsPage() {
                         {/* Collaborators Avatar Stack */}
                         <TableCell className="py-3 px-4">
                           {deal.collaborators && deal.collaborators.length > 0 ? (
-                            <div
-                              className="flex items-center -space-x-1.5 overflow-hidden"
-                              title={`Collaborators: ${deal.collaborators
+                            <Tooltip
+                              content={`Collaborators: ${deal.collaborators
                                 .map((c) => c.user?.name || 'Unknown')
                                 .join(', ')}`}
+                              side="top"
                             >
-                              {deal.collaborators.slice(0, 2).map((collab) => {
-                                const initials = collab.user?.name
-                                  ? collab.user.name
-                                      .split(' ')
-                                      .map((n) => n[0])
-                                      .slice(0, 2)
-                                      .join('')
-                                      .toUpperCase()
-                                  : '??';
-                                return (
-                                  <Avatar
-                                    key={collab.userId}
-                                    fallback={initials}
-                                    className="h-6 w-6 text-[0.5625rem] font-semibold text-[#1c1c1c] bg-[#eceae4] border-2 border-[#fcfbf8] ring-1 ring-black/5"
-                                  />
-                                );
-                              })}
-                              {deal.collaborators.length > 2 && (
-                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#f4f2eb] border-2 border-[#fcfbf8] text-[0.5625rem] font-bold text-[#5f5f5d]">
-                                  +{deal.collaborators.length - 2}
-                                </span>
-                              )}
-                            </div>
+                              <div className="flex items-center -space-x-1.5 overflow-hidden">
+                                {deal.collaborators.slice(0, 2).map((collab) => {
+                                  const initials = collab.user?.name
+                                    ? collab.user.name
+                                        .split(' ')
+                                        .map((n) => n[0])
+                                        .slice(0, 2)
+                                        .join('')
+                                        .toUpperCase()
+                                    : '??';
+                                  return (
+                                    <Avatar
+                                      key={collab.userId}
+                                      fallback={initials}
+                                      className="h-6 w-6 text-[0.5625rem] font-semibold text-[#1c1c1c] bg-[#eceae4] border-2 border-[#fcfbf8] ring-1 ring-black/5"
+                                    />
+                                  );
+                                })}
+                                {deal.collaborators.length > 2 && (
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#f4f2eb] border-2 border-[#fcfbf8] text-[0.5625rem] font-bold text-[#5f5f5d]">
+                                    +{deal.collaborators.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            </Tooltip>
                           ) : (
                             <span className="text-xs text-[#8e8d8a]">—</span>
                           )}
@@ -916,11 +925,10 @@ export function DealsPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="newDealDate">Expected Close Date *</Label>
-              <Input
+              <DatePicker
                 id="newDealDate"
-                type="date"
                 value={dealCloseDate}
-                onChange={(e) => setDealCloseDate(e.target.value)}
+                onChange={setDealCloseDate}
                 required
               />
             </div>

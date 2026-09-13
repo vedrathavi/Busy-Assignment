@@ -105,6 +105,20 @@ export const NOTIFICATION_VISUAL_MAP: Record<ActivityNotificationType, Notificat
     iconBg: 'bg-teal-50',
     iconBorder: 'border-teal-200/70',
   },
+  TASK_ASSIGNED: {
+    icon: FiUserCheck,
+    label: 'Task Assigned',
+    iconColor: 'text-indigo-600',
+    iconBg: 'bg-indigo-50',
+    iconBorder: 'border-indigo-200/70',
+  },
+  TASK_COMPLETED: {
+    icon: FiCheckCircle,
+    label: 'Task Completed',
+    iconColor: 'text-emerald-600',
+    iconBg: 'bg-emerald-50',
+    iconBorder: 'border-emerald-200/70',
+  },
 };
 
 export function getNotificationVisual(type: ActivityNotificationType): NotificationVisualConfig {

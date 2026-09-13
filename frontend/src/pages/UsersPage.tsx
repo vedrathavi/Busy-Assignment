@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiUsers, FiSearch, FiMail, FiCalendar, FiArrowRight, FiShield, FiBriefcase } from 'react-icons/fi';
+import { FiSearch, FiMail, FiCalendar, FiArrowRight, FiShield, FiBriefcase } from 'react-icons/fi';
 import { useUsers } from '@/features/users/useUsers';
 import { UserRole } from '@/features/users/users.api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +9,12 @@ import { Input } from '@/components/ui/input';
 import { TableSkeleton } from '@/components/common/SkeletonLoader';
 import { EmptyState } from '@/components/common/EmptyState';
 import { formatDate } from '@/lib/utils';
+import {
+  PageHeader,
+  PageHeaderHeading,
+  PageHeaderTitle,
+  PageHeaderDescription,
+} from '@/components/ui/page-header';
 
 export function UsersPage() {
   const navigate = useNavigate();
@@ -42,17 +48,14 @@ export function UsersPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#1c1c1c] flex items-center gap-2.5">
-            <FiUsers className="h-6 w-6 text-[#1c1c1c]" />
-            Team Directory
-          </h1>
-          <p className="text-xs text-[#5f5f5d] mt-1">
+      <PageHeader>
+        <PageHeaderHeading>
+          <PageHeaderTitle>Team Directory</PageHeaderTitle>
+          <PageHeaderDescription>
             Authoritative directory of organization team members, roles, and deal ownership.
-          </p>
-        </div>
-      </div>
+          </PageHeaderDescription>
+        </PageHeaderHeading>
+      </PageHeader>
 
       {/* Filter Bar */}
       <Card className="border-[#eceae4] bg-[#fcfbf8] shadow-xs">

@@ -9,6 +9,7 @@ import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { alertRouter } from './modules/alerts/alert.routes';
 import { userRouter } from './modules/users/user.routes';
 import { notificationRouter } from './modules/notifications/notification.routes';
+import { taskRouter } from './modules/tasks/task.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -75,6 +76,7 @@ export function createApp(): Application {
   app.use('/api/alerts', alertRouter);
   app.use('/api/users', userRouter);
   app.use('/api/notifications', notificationRouter);
+  app.use('/api/tasks', taskRouter);
 
   // Global Error Handler
   app.use(errorHandler);

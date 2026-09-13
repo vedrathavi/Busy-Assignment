@@ -10,6 +10,8 @@ import {
 import {
   ActivityNotificationItem,
   NotificationCountResponse,
+  NotificationListQuery,
+  NotificationPagination,
 } from './notifications.types';
 
 /**
@@ -52,15 +54,38 @@ export function useNotificationCount() {
 }
 
 /**
- * Fetches activity notifications list.
+ * Fetches activity notifications list with server-side pagination.
  * Note: Does NOT periodically poll. Only fetched when opened or invalidated upon count change/mutations.
  */
-export function useNotifications(status: 'all' | 'unread' | 'read' = 'all') {
+export function useNotifications(
+  queryOrStatus: 'all' | 'unread' | 'read' | NotificationListQuery = 'all'
+) {
+  const { user } = useAuth();
+  const query: NotificationListQuery =
+    typeof queryOrStatus === 'string'
+      ? { status: queryOrStatus, page: 1, limit: 20 }
+      : queryOrStatus;
+
+  return useQuery<{ notifications: ActivityNotificationItem[]; pagination: NotificationPagination }, Error>({
+    queryKey: ['notifications', 'list', user?.id, query.status || 'all', query.page || 1, query.limit || 20],
+    queryFn: () => getNotificationsApi(query),
+    enabled: Boolean(user?.id),
+    staleTime: 30000,
+  });
+}
+
+/**
+ * Lightweight recent notifications hook for NotificationBell dropdown (loads max 5 items).
+ */
+export function useRecentNotifications(limit = 5) {
   const { user } = useAuth();
 
   return useQuery<ActivityNotificationItem[], Error>({
-    queryKey: ['notifications', 'list', user?.id, status],
-    queryFn: () => getNotificationsApi({ status }),
+    queryKey: ['notifications', 'recent', user?.id, limit],
+    queryFn: async () => {
+      const res = await getNotificationsApi({ status: 'all', limit });
+      return res.notifications;
+    },
     enabled: Boolean(user?.id),
     staleTime: 30000,
   });

@@ -339,6 +339,16 @@ export function formatNotificationContent(
         title: 'New Deal Created',
         message: `Deal "${dealTitle}" has been created.`,
       };
+    case NotificationType.TASK_ASSIGNED:
+      return {
+        title: 'Task Assigned',
+        message: `A task on "${dealTitle}" was assigned to you.`,
+      };
+    case NotificationType.TASK_COMPLETED:
+      return {
+        title: 'Task Completed',
+        message: `A task on "${dealTitle}" was completed.`,
+      };
     default:
       return {
         title: 'Deal Activity',

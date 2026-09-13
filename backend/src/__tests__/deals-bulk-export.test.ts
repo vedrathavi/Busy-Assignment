@@ -67,20 +67,6 @@ describe('Phase 7: Bulk Operations & Pipeline CSV Export Integration Tests', { t
 
   const resetDeals = async () => {
     await prisma.$transaction([
-      prisma.dealHistory.deleteMany({
-        where: {
-          OR: [
-            { dealId: { notIn: ALL_SEEDED_DEAL_IDS } },
-            { createdAt: { gte: new Date('2026-09-10T00:00:00.000Z') } },
-          ],
-        },
-      }),
-      prisma.dealCollaborator.deleteMany({
-        where: { dealId: { notIn: ALL_SEEDED_DEAL_IDS } },
-      }),
-      prisma.deal.deleteMany({
-        where: { id: { notIn: ALL_SEEDED_DEAL_IDS } },
-      }),
       prisma.deal.update({
         where: { id: DEALS.d1 },
         data: { stage: DealStage.NEW, ownerId: USER_REP1_ID, closedAt: null, previousStage: null, deletedAt: null },

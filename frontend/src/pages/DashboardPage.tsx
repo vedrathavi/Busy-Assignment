@@ -32,6 +32,14 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { formatCurrency } from '@/lib/utils';
 import { DealStage } from '@/features/dashboard/dashboard.types';
 
+import {
+  PageHeader,
+  PageHeaderHeading,
+  PageHeaderTitle,
+  PageHeaderDescription,
+  PageHeaderActions,
+} from '@/components/ui/page-header';
+
 const STAGE_CONFIG: Record<DealStage, { label: string; color: string; bg: string }> = {
   NEW: { label: 'New', color: '#1c1c1c', bg: 'bg-[#eceae4]' },
   QUALIFIED: { label: 'Qualified', color: '#1c1c1c', bg: 'bg-[#eceae4]' },
@@ -92,23 +100,21 @@ export function DashboardPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Page Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <PageHeader>
+        <PageHeaderHeading>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-[#1c1c1c] sm:text-3xl">
-              Sales Dashboard
-            </h1>
+            <PageHeaderTitle>Sales Dashboard</PageHeaderTitle>
             <Badge variant="outline" className="text-xs font-normal text-[#5f5f5d] border-[#eceae4]">
               {isManager ? 'Team View' : 'Personal View'}
             </Badge>
           </div>
-          <p className="text-sm text-[#5f5f5d] mt-1.5 leading-relaxed">
+          <PageHeaderDescription>
             Welcome back, <span className="font-medium text-[#1c1c1c]">{user?.name}</span>. Here is your pipeline summary.
-          </p>
-        </div>
+          </PageHeaderDescription>
+        </PageHeaderHeading>
 
         {/* Quick Actions */}
-        <div className="flex items-center gap-2.5">
+        <PageHeaderActions>
           {alertsCount && alertsCount.count > 0 ? (
             <Link to="/alerts">
               <Button variant="outline" size="sm" className="gap-2 border-[#eceae4] text-[#1c1c1c] hover:bg-[#eceae4]">
@@ -123,8 +129,8 @@ export function DashboardPage() {
               <span>View All Deals</span>
             </Button>
           </Link>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
       {/* 4 Interactive Executive Metric Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

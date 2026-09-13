@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Avatar } from '@/components/ui/avatar';
+import { Tooltip } from '@/components/ui/tooltip';
 import {
   Table,
   TableBody,
@@ -365,34 +366,36 @@ export function UserDetailPage() {
                         </TableCell>
                         <TableCell className="py-3 px-4">
                           {deal.collaborators && deal.collaborators.length > 0 ? (
-                            <div
-                              className="flex items-center -space-x-1.5 overflow-hidden"
-                              title={`Collaborators: ${deal.collaborators
+                            <Tooltip
+                              content={`Collaborators: ${deal.collaborators
                                 .map((c) => c.user?.name || 'Unknown')
                                 .join(', ')}`}
+                              side="top"
                             >
-                              {deal.collaborators.slice(0, 2).map((c) => (
-                                <Avatar
-                                  key={c.userId}
-                                  fallback={
-                                    c.user?.name
-                                      ? c.user.name
-                                          .split(' ')
-                                          .map((n) => n[0])
-                                          .slice(0, 2)
-                                          .join('')
-                                          .toUpperCase()
-                                      : '??'
-                                  }
-                                  className="h-6 w-6 text-[9px] font-semibold text-[#1c1c1c] bg-[#eceae4] border-2 border-[#fcfbf8]"
-                                />
-                              ))}
-                              {deal.collaborators.length > 2 && (
-                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#f4f2eb] border-2 border-[#fcfbf8] text-[9px] font-bold text-[#5f5f5d]">
-                                  +{deal.collaborators.length - 2}
-                                </span>
-                              )}
-                            </div>
+                              <div className="flex items-center -space-x-1.5 overflow-hidden">
+                                {deal.collaborators.slice(0, 2).map((c) => (
+                                  <Avatar
+                                    key={c.userId}
+                                    fallback={
+                                      c.user?.name
+                                        ? c.user.name
+                                            .split(' ')
+                                            .map((n) => n[0])
+                                            .slice(0, 2)
+                                            .join('')
+                                            .toUpperCase()
+                                        : '??'
+                                    }
+                                    className="h-6 w-6 text-[9px] font-semibold text-[#1c1c1c] bg-[#eceae4] border-2 border-[#fcfbf8]"
+                                  />
+                                ))}
+                                {deal.collaborators.length > 2 && (
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#f4f2eb] border-2 border-[#fcfbf8] text-[9px] font-bold text-[#5f5f5d]">
+                                    +{deal.collaborators.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            </Tooltip>
                           ) : (
                             <span className="text-xs text-[#8e8d8a]">—</span>
                           )}

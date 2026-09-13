@@ -136,9 +136,13 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
           aria-haspopup="listbox"
           aria-expanded={isOpen}
         >
-          <span className={cn('truncate', !selectedOption && 'text-[#5f5f5d]/70')}>
-            {displayLabel}
-          </span>
+          <div className={cn('flex-1 min-w-0 text-left', !selectedOption && 'text-[#5f5f5d]/70')}>
+            {typeof displayLabel === 'string' ? (
+              <span className="truncate block">{displayLabel}</span>
+            ) : (
+              displayLabel
+            )}
+          </div>
           <FiChevronDown
             className={cn(
               'h-3.5 w-3.5 shrink-0 text-[#5f5f5d] transition-transform duration-200 ml-2',
@@ -162,7 +166,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
                   disabled={opt.disabled}
                   onClick={() => !opt.disabled && handleSelect(opt.value)}
                   className={cn(
-                    'flex w-full items-center justify-between rounded-[5px] px-2.5 py-1.5 text-xs text-left cursor-pointer transition-colors',
+                    'flex w-full items-center justify-between rounded-[5px] px-2.5 py-1.5 text-xs text-left cursor-pointer transition-colors gap-2',
                     isSelected
                       ? 'bg-[#eceae4] font-medium text-[#1c1c1c]'
                       : 'text-[#1c1c1c] hover:bg-[#eceae4]/60',
@@ -171,8 +175,14 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
                   role="option"
                   aria-selected={isSelected}
                 >
-                  <span className="truncate">{opt.label}</span>
-                  {isSelected && <FiCheck className="h-3.5 w-3.5 text-[#1c1c1c] shrink-0 ml-2" />}
+                  <div className="flex-1 min-w-0">
+                    {typeof opt.label === 'string' ? (
+                      <span className="truncate block">{opt.label}</span>
+                    ) : (
+                      opt.label
+                    )}
+                  </div>
+                  {isSelected && <FiCheck className="h-3.5 w-3.5 text-[#1c1c1c] shrink-0 ml-1" />}
                 </button>
               );
             })}

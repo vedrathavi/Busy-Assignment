@@ -210,9 +210,29 @@ graph TD
 - [x] Sonner toast notifications for all mutation feedback.
 - *Status*: **COMPLETED**
 
-### Phase 14: Verification, Test Suites & Final Audit
-- [x] Backend automated integration tests passing across all modules.
-- [x] Frontend TypeScript type check (`tsc --noEmit`) and Vite production bundle build (`npm run build`) passing with zero errors.
+### Phase 14: Activity Notifications & Deal Alert Enhancements
+- [x] Activity notification system for stage transitions, reassignments, collaborator updates, deal creation, and deal notes.
+- [x] Dual-state notification storage (`readAt = null` unread, `readAt != null` read) with no destructive deletes.
+- [x] Notification bell with lightweight polling (30s) and recent notification preview (`limit: 5`).
+- [x] Dedicated Activity & Alerts center (`/alerts`) with status filtering (`all`, `unread`, `read`) and server-side pagination.
+- [x] Full Vitest integration suite (21 tests in `notifications.test.ts`).
+- *Status*: **COMPLETED**
+
+### Phase 15: Multi-Assignee Deal Tasks with Creation-Time Immutable Assignment
+- [x] Relational `TaskAssignee` join model (`UNIQUE(taskId, userId)`) with non-destructive backfill migration.
+- [x] Strict creation-time immutability: assignees chosen at creation, permanently locked thereafter. No post-creation add/remove/reassign APIs or UI controls.
+- [x] Strictly deal-scoped eligible assignees: `Deal Owner + Active Deal Collaborators` only ($\text{requestedAssignees} \subseteq \{\text{deal.ownerId}\} \cup \{\text{activeCollaborators}\}$). Applies uniformly to Managers, Deal Owners, and Collaborators.
+- [x] Independent completion states and notes per assignee (`TaskAssignee.completedAt`, `completionNote`).
+- [x] Overall `Task.completedAt` set when all assignees complete. Reopening resets individual and overall completion while preserving other assignees' status.
+- [x] Multi-assignee creation UI (`TaskFormDialog.tsx`) and read-only card presentation (`TaskCard.tsx`).
+- [x] Dual perspectives (`assigned_to_me`, `assigned_by_me`, `team`) and deduplicated queries.
+- [x] Comprehensive automated Vitest integration suite (20 tests in `tasks.test.ts`).
+- *Status*: **COMPLETED**
+
+### Phase 16: Verification, Test Suites & Final Audit
+- [x] Full backend automated integration suite passing (all 12 test files).
+- [x] Baseline database audit verified intact (100% integrity).
+- [x] Frontend TypeScript type check (`tsc --noEmit`) and production bundle build (`npm run build`) passing with zero errors.
 - [x] Git diff check and documentation updates.
 - *Status*: **COMPLETED**
 

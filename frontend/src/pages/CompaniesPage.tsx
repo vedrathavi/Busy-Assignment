@@ -28,6 +28,13 @@ import { UserSelector } from '@/components/common/UserSelector';
 
 import { useDebounce } from '@/hooks/useDebounce';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  PageHeader,
+  PageHeaderHeading,
+  PageHeaderTitle,
+  PageHeaderDescription,
+  PageHeaderActions,
+} from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -212,24 +219,22 @@ export function CompaniesPage() {
   return (
     <div className="space-y-4 animate-in fade-in duration-200 w-full">
       {/* Page Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <PageHeader>
+        <PageHeaderHeading>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-[#1c1c1c] sm:text-3xl">
-              Companies
-            </h1>
+            <PageHeaderTitle>Companies</PageHeaderTitle>
             {data?.pagination && (
               <Badge variant="outline" className="text-xs font-normal text-[#5f5f5d] border-[#eceae4]">
                 {data.pagination.total} Total
               </Badge>
             )}
           </div>
-          <p className="text-sm text-[#5f5f5d] mt-1.5 leading-relaxed">
+          <PageHeaderDescription>
             Manage organization accounts, prospect companies, and client relations.
-          </p>
-        </div>
+          </PageHeaderDescription>
+        </PageHeaderHeading>
 
-        <div className="flex items-center gap-2">
+        <PageHeaderActions>
           <Button
             variant="outline"
             size="sm"
@@ -249,8 +254,8 @@ export function CompaniesPage() {
             <FiPlus className="h-4 w-4" />
             <span>Create Company</span>
           </Button>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
       {formError && (
         <div className="rounded-[8px] border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">

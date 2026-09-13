@@ -58,11 +58,15 @@ export class NotificationRepository {
 
   /**
    * Retrieves activity notifications for a user (excluding Goal 10 DEAL_OVERDUE alerts).
+   * Supports server-side pagination with limit and page.
    */
   public async getUserActivityNotifications(
     userId: string,
     query: NotificationListQuery = {}
-  ): Promise<ActivityNotificationItem[]> {
+  ): Promise<{
+    notifications: ActivityNotificationItem[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }> {
     const whereClause: Prisma.NotificationWhereInput = {
       userId,
       type: { not: NotificationType.DEAL_OVERDUE },
@@ -74,30 +78,36 @@ export class NotificationRepository {
       whereClause.readAt = { not: null };
     }
 
-    const limit = query.limit && query.limit > 0 ? Math.min(query.limit, 100) : 50;
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = query.limit && query.limit > 0 ? Math.min(query.limit, 100) : 20;
+    const skip = (page - 1) * limit;
 
-    const notifications = await prisma.notification.findMany({
-      where: whereClause,
-      include: {
-        deal: {
-          select: {
-            id: true,
-            title: true,
-            stage: true,
-            company: {
-              select: {
-                id: true,
-                name: true,
+    const [notifications, total] = await Promise.all([
+      prisma.notification.findMany({
+        where: whereClause,
+        include: {
+          deal: {
+            select: {
+              id: true,
+              title: true,
+              stage: true,
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.notification.count({ where: whereClause }),
+    ]);
 
-    return notifications.map((n) => ({
+    const mapped = notifications.map((n) => ({
       id: n.id,
       userId: n.userId,
       dealId: n.dealId,
@@ -120,6 +130,16 @@ export class NotificationRepository {
           }
         : null,
     }));
+
+    return {
+      notifications: mapped,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
   }
 
   /**

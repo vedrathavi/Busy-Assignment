@@ -29,6 +29,8 @@ graph TD
             UsersMod["users (Team Directory & Selection)"]
             CompMod["companies"]
             DealsMod["deals (State Machine & History)"]
+            TasksMod["tasks (Multi-Assignee & Immutability)"]
+            NotifMod["notifications (In-App & Alerts)"]
             DashMod["dashboard (Aggregations)"]
             AlertsMod["alerts (Past-Due Engine)"]
         end
@@ -96,6 +98,8 @@ backend/src/
 │   ├── users/               # Team member discovery for collaborator selection
 │   ├── companies/           # Company lifecycle, archiving, restore
 │   ├── deals/               # Deals CRUD, lifecycle, transition policies, collaborators, timeline
+│   ├── tasks/               # Multi-assignee deal tasks, immutable assignment, completion lifecycle
+│   ├── notifications/       # In-app activity notifications, task alerts, overdue alerts
 │   ├── dashboard/           # Pipeline aggregations, win rates, weekly trend metrics
 │   └── alerts/              # Overdue deal detection & dismissal tracking
 ├── app.ts                   # Express application factory & middleware pipeline
@@ -194,8 +198,15 @@ flowchart TD
     AuthCheck -- Yes --> RoleCheck{User Role?}
     
     RoleCheck -- MANAGER --> ManagerAccess[Access ALL Team Companies & Deals]
+    ManagerAccess -- Create Deal Task --> DealTaskScopeCheck{Assignees ⊆ Deal Owner + Active Collabs?}
+    DealTaskScopeCheck -- Yes --> AllowManagerTask[Create Multi-Assignee Task & Freeze Assignees]
+    DealTaskScopeCheck -- No --> DenyManagerTask[403 Forbidden: Assignee Not on Deal]
     
     RoleCheck -- SALES_REP --> RepAccess{Resource Scoped?}
+    RepAccess -- Create Deal Task --> RepTaskScopeCheck{Is Owner/Collab AND Assignees ⊆ Deal?}
+    RepTaskScopeCheck -- Yes --> AllowRepTask[Create Multi-Assignee Task & Freeze Assignees]
+    RepTaskScopeCheck -- No --> DenyRepTask[403 Forbidden: Unauthorized Creator or Assignee]
+
     RepAccess -- View/Edit Deal --> DealCheck{Is Owner OR Collaborator?}
     DealCheck -- Yes --> AllowDeal[Allow Access]
     DealCheck -- No --> DenyDeal[403 Forbidden / 404 Not Found]
@@ -411,3 +422,100 @@ To eliminate server load without complex persistent connection brokers:
 - **Scoped Invalidation**:
   - Invalidation queries are strictly scoped by user ID: `['notifications', 'count', user.id]` and `['notifications', 'list', user.id]`.
   - Deal mutations in the frontend invalidate `['notifications']` queries so the active user's view updates immediately.
+
+---
+
+## 10. Deal Tasks & Follow-ups Architecture (Optional Addon Phase 2)
+
+### Overview
+Deal tasks represent actionable next steps (follow-ups, proposal reviews, pricing confirmations, contract checks) directly tied to advancing deal opportunities. The system implements a **multi-assignee relational model with creation-time immutable assignment**.
+
+### Data Model & Relational Structure
+- **Multi-Assignee Relational Model**:
+  - Tasks are represented by the `Task` model linked directly to `Deal` and `Team`.
+  - Assignees are represented by the `TaskAssignee` relational join model (`Task 1 : N TaskAssignee`), with `UNIQUE(taskId, userId)`.
+  - `TaskAssignee` is the sole source of truth for task assignments, individual completions (`completedAt`), and completion notes (`completionNote`).
+  - Legacy `assignedToId` is maintained strictly as an auto-derived read-only compatibility field in API responses.
+  - `dueDate` is modeled strictly as a calendar date (`DateTime @db.Date`), eliminating timezone drift.
+  - Priority levels are strictly enumerated via `TaskPriority` (`LOW`, `MEDIUM`, `HIGH`).
+- **Completion Lifecycle**:
+  - **Individual Completion**: Each assignee completes their own assignment via `POST /api/tasks/:id/complete` with an optional note.
+  - **Overall Task Completion**: The overall `Task.completedAt` is updated automatically when and only when all assignees have completed their assignments.
+  - **Reopen Behavior**: An assignee can reopen their individual assignment via `POST /api/tasks/:id/reopen`, resetting overall `Task.completedAt = null` while preserving other assignees' completions.
+
+### Strictly Deal-Scoped Creation Authorization
+Authorization is strictly evaluated on the server:
+
+| Capability | Allowed Roles / Stakeholders | Enforcement Mechanism |
+| :--- | :--- | :--- |
+| **Create Task** | Manager, Deal Owner, Active Deal Collaborator | `TaskPolicy.canCreate()` |
+| **Assign Task (Creation-Only)** | Strictly `Deal Owner + Active Deal Collaborators` on that specific deal | `TaskPolicy.canAssign()`: enforces $\text{requestedAssignees} \subseteq \{\text{deal.ownerId}\} \cup \{\text{activeCollaborators}\}$ for all creators (including Managers) |
+| **View Tasks** | Manager, Deal Owner, Active Collaborator, Task Creator, Task Assignee | `TaskPolicy.canView()` and repository query filters |
+| **Edit Task Details** | Manager, Deal Owner, Task Creator, Task Assignee | `TaskPolicy.canEdit()`: permits updating `title`, `description`, `priority`, and `dueDate` |
+| **Modify Assignees Post-Creation** | **FORBIDDEN FOR ALL USERS** | **Strict Creation-Time Immutability**: No API endpoints or UI controls exist for adding, removing, or reassigning users after creation |
+| **Complete Individual Assignment** | Assigned Sales Rep | `TaskPolicy.canComplete()`: strictly checks `TaskAssignee.userId === user.id` |
+| **Reopen Individual Assignment** | Assigned Sales Rep | `TaskPolicy.canReopen()`: strictly checks `TaskAssignee.userId === user.id` |
+| **Delete Task** | Manager, Deal Owner, Task Creator | `TaskPolicy.canDelete()` |
+
+### Lifecycle & Notification Workflows
+1. **Creation**:
+   - Creates `Task` and all `TaskAssignee` rows atomically in the database.
+   - Dispatches `TASK_ASSIGNED` notifications to each selected assignee (excluding self-assignment).
+2. **Individual Completion**:
+   - Updates `TaskAssignee.completedAt` and `completionNote`.
+   - If optional completion note is provided, creates `DealHistory` record with `type: NOTE_ADDED`.
+   - If completing actor is not the task creator, dispatches `TASK_COMPLETED` notification to the task creator detailing the actor and note.
+   - If all assignees are complete, sets `Task.completedAt = NOW()`.
+3. **Reopening**:
+   - Updates `TaskAssignee.completedAt = null` and resets `Task.completedAt = null`.
+4. **Multi-Assignee Task Creation & Completion Sequence**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Collab as Deal Collaborator (Priya)
+    actor Owner as Deal Owner (Marcus)
+    participant UI as React UI (TaskFormDialog / TaskCard)
+    participant HTTP as Express REST API
+    participant Pol as TaskPolicy
+    participant Repo as TaskRepository
+    participant DB as PostgreSQL (Supabase)
+
+    Note over Collab,UI: 1. Creation-Time Task Delegation
+    Collab->>UI: Creates task "Review commercial contract"
+    UI->>UI: Loads participants for Deal 3 (Owner: Marcus, Collab: Priya)
+    Collab->>UI: Selects assignees: [Marcus, Priya]
+    UI->>HTTP: POST /api/deals/deal-3/tasks { title, assignedToIds: [marcusId, priyaId], dueDate }
+    HTTP->>Pol: canAssign(Priya, deal3, Marcus) && canAssign(Priya, deal3, Priya)
+    Pol-->>HTTP: Validated (Both are active deal participants)
+    HTTP->>Repo: create(deal-3, [marcusId, priyaId])
+    Repo->>DB: INSERT INTO "Task" & INSERT INTO "TaskAssignee" (2 rows)
+    Repo->>DB: INSERT INTO "Notification" (TASK_ASSIGNED to Marcus)
+    DB-->>Repo: Task created with locked assignees
+    HTTP-->>UI: HTTP 201 Created (TaskResponse)
+
+    Note over Owner,DB: 2. Individual Completion (Assignee 1)
+    Owner->>UI: Clicks complete with note: "Pricing verified"
+    UI->>HTTP: POST /api/tasks/task-1/complete { completionNote: "Pricing verified" }
+    HTTP->>Repo: completeAssignee(task-1, marcusId, note)
+    Repo->>DB: UPDATE "TaskAssignee" SET completedAt = NOW(), note = 'Pricing verified'
+    Repo->>DB: INSERT INTO "DealHistory" (NOTE_ADDED)
+    Repo->>DB: INSERT INTO "Notification" (TASK_COMPLETED to Priya)
+    Repo->>DB: COUNT "TaskAssignee" WHERE completedAt IS NULL -> 1 remaining (Priya)
+    Note over DB: Overall Task remains OPEN (1/2 completed)
+    HTTP-->>UI: HTTP 200 OK (Task: Open, Progress: 1/2)
+
+    Note over Collab,DB: 3. Final Completion (Assignee 2)
+    Collab->>UI: Clicks complete with note: "Legal terms approved"
+    UI->>HTTP: POST /api/tasks/task-1/complete { completionNote: "Legal terms approved" }
+    HTTP->>Repo: completeAssignee(task-1, priyaId, note)
+    Repo->>DB: UPDATE "TaskAssignee" SET completedAt = NOW(), note = 'Legal terms approved'
+    Repo->>DB: COUNT "TaskAssignee" WHERE completedAt IS NULL -> 0 remaining
+    Repo->>DB: UPDATE "Task" SET completedAt = NOW()
+    Note over DB: Overall Task becomes COMPLETED (2/2 completed)
+    HTTP-->>UI: HTTP 200 OK (Task: Completed, Progress: 2/2)
+```
+
+### Lifecycle Boundaries
+- **Company Archival**: Does NOT affect tasks. Tasks remain accessible through their deal.
+- **Deal Soft-Deletion**: Tasks on soft-deleted deals are automatically excluded from active task queries, while the physical `Task` and `TaskAssignee` rows remain persisted to guarantee historical audit integrity.

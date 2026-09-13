@@ -40,16 +40,25 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
     { dealId: '30000000-0000-4000-8000-000000000013', userId: USER_REP1_ID },
   ];
 
+  const trackedHistoryIds = new Set<string>();
+
+  const trackHistoryOnDeal = async (dealId: string) => {
+    const histories = await prisma.dealHistory.findMany({
+      where: {
+        dealId,
+        type: { in: [HistoryType.COLLABORATOR_ADDED, HistoryType.COLLABORATOR_REMOVED, HistoryType.NOTE_ADDED, HistoryType.OWNER_CHANGED] },
+      },
+      select: { id: true },
+    });
+    histories.forEach((h) => trackedHistoryIds.add(h.id));
+  };
+
   const cleanupCollaborators = async () => {
-    // Delete any non-seeded collaborators
+    // Delete only test-added collaborators on Deal 7
     await prisma.dealCollaborator.deleteMany({
       where: {
-        NOT: {
-          OR: seededCollaborators.map((c) => ({
-            dealId: c.dealId,
-            userId: c.userId,
-          })),
-        },
+        dealId: DEALS.d7,
+        userId: { in: [USER_REP3_ID, USER_REP2_ID] },
       },
     });
 
@@ -69,13 +78,16 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
     await prisma.deal.update({ where: { id: DEALS.d10 }, data: { ownerId: USER_REP2_ID } });
     await prisma.deal.update({ where: { id: DEALS.d13 }, data: { ownerId: USER_REP3_ID } });
 
-    // Delete dynamically generated test history events
-    await prisma.dealHistory.deleteMany({
-      where: {
-        type: { in: [HistoryType.COLLABORATOR_ADDED, HistoryType.COLLABORATOR_REMOVED, HistoryType.NOTE_ADDED, HistoryType.OWNER_CHANGED] },
-        createdAt: { gte: new Date('2026-09-10T00:00:00.000Z') },
-      },
-    });
+    // Delete only tracked test history events if any were recorded
+    const historyIds = Array.from(trackedHistoryIds);
+    if (historyIds.length > 0) {
+      await prisma.dealHistory.deleteMany({
+        where: {
+          id: { in: historyIds },
+        },
+      });
+      trackedHistoryIds.clear();
+    }
   };
 
   beforeAll(async () => {
@@ -83,8 +95,6 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
     rep1Token    = signToken({ sub: USER_REP1_ID });
     rep2Token    = signToken({ sub: USER_REP2_ID });
     rep3Token    = signToken({ sub: USER_REP3_ID });
-
-    await cleanupCollaborators();
   }, 30000);
 
   afterAll(async () => {

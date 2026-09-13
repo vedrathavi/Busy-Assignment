@@ -9,7 +9,10 @@ export class NotificationService {
   public async getNotifications(
     user: AuthUser,
     query: NotificationListQuery = {}
-  ): Promise<ActivityNotificationItem[]> {
+  ): Promise<{
+    notifications: ActivityNotificationItem[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }> {
     return this.repo.getUserActivityNotifications(user.id, query);
   }
 

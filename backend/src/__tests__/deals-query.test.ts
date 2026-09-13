@@ -66,20 +66,6 @@ describe('Phase 8: Deal Search, Filtering, Sorting & Pagination Integration Test
 
   const resetDeals = async () => {
     await prisma.$transaction([
-      prisma.dealHistory.deleteMany({
-        where: {
-          OR: [
-            { dealId: { notIn: ALL_SEEDED_DEAL_IDS } },
-            { createdAt: { gte: new Date('2026-09-10T00:00:00.000Z') } },
-          ],
-        },
-      }),
-      prisma.dealCollaborator.deleteMany({
-        where: { dealId: { notIn: ALL_SEEDED_DEAL_IDS } },
-      }),
-      prisma.deal.deleteMany({
-        where: { id: { notIn: ALL_SEEDED_DEAL_IDS } },
-      }),
       // Restore stages, owners, and closedAt for all seed deals
       prisma.deal.update({
         where: { id: DEALS.d1 },

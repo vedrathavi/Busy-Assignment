@@ -10,6 +10,8 @@ import {
   FiBell,
   FiClock,
   FiArrowRight,
+  FiChevronLeft,
+  FiChevronRight,
 } from 'react-icons/fi';
 import { LuCheckCheck } from 'react-icons/lu';
 import { useAlerts, useAlertsCount, useDismissAlert } from '@/features/alerts/useAlerts';
@@ -29,6 +31,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  PageHeader,
+  PageHeaderHeading,
+  PageHeaderTitle,
+  PageHeaderDescription,
+  PageHeaderActions,
+} from '@/components/ui/page-header';
 import { formatCurrency, formatDate, getDaysOverdue, cn } from '@/lib/utils';
 
 function formatRelativeTime(dateString: string): string {
@@ -56,6 +65,7 @@ export function AlertsPage() {
 
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [activityStatusFilter, setActivityStatusFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [activityPage, setActivityPage] = useState<number>(1);
 
   // Goal 10 Overdue Deal Alerts
   const [alertStatusFilter, setAlertStatusFilter] = useState<'all' | 'active' | 'dismissed'>('active');
@@ -73,13 +83,21 @@ export function AlertsPage() {
   // Deal Activity Notifications (Optional Addon)
   const { data: countData } = useNotificationCount();
   const {
-    data: activityNotifications,
+    data: activityData,
     isLoading: isActivityLoading,
     isError: isActivityError,
     error: activityError,
     refetch: refetchActivity,
     isFetching: isActivityFetching,
-  } = useNotifications(activityStatusFilter);
+  } = useNotifications({ status: activityStatusFilter, page: activityPage, limit: 20 });
+
+  const activityNotifications = activityData?.notifications || [];
+  const activityPagination = activityData?.pagination || {
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 1,
+  };
 
   const markReadMutation = useMarkNotificationRead();
   const markAllMutation = useMarkAllNotificationsRead();
@@ -103,12 +121,10 @@ export function AlertsPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Page Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+      <PageHeader>
+        <PageHeaderHeading>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-[#1c1c1c] sm:text-3xl">
-              Activity & Alerts
-            </h1>
+            <PageHeaderTitle>Activity & Alerts</PageHeaderTitle>
             {unreadActivityCount > 0 && (
               <Badge
                 variant="default"
@@ -126,18 +142,18 @@ export function AlertsPage() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-[#5f5f5d] mt-1.5 leading-relaxed">
+          <PageHeaderDescription>
             Stay up to date with changes to deals you work on.
-          </p>
-        </div>
+          </PageHeaderDescription>
+        </PageHeaderHeading>
 
-        <div className="flex items-center gap-2 self-start">
+        <PageHeaderActions>
           <Button
             variant="outline"
             size="sm"
             onClick={() => (activeTab === 'activity' ? refetchActivity() : refetchAlerts())}
             disabled={activeTab === 'activity' ? isActivityFetching : isAlertsFetching}
-            className="border-[#eceae4] text-[#1c1c1c] hover:bg-[#eceae4] text-xs h-8"
+            className="border-[#eceae4] text-[#1c1c1c] hover:bg-[#eceae4]"
             aria-label="Refresh list"
           >
             <FiRefreshCw
@@ -147,8 +163,8 @@ export function AlertsPage() {
             />
             Refresh
           </Button>
-        </div>
-      </div>
+        </PageHeaderActions>
+      </PageHeader>
 
       {/* Primary Navigation Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -185,7 +201,10 @@ export function AlertsPage() {
               {(['all', 'unread', 'read'] as const).map((filter) => (
                 <button
                   key={filter}
-                  onClick={() => setActivityStatusFilter(filter)}
+                  onClick={() => {
+                    setActivityStatusFilter(filter);
+                    setActivityPage(1);
+                  }}
                   className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${
                     activityStatusFilter === filter
                       ? 'bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset'
@@ -315,15 +334,31 @@ export function AlertsPage() {
                           </div>
                         </div>
 
-                        {/* Middle: Human-readable message (Actor + Action + Object) */}
-                        <p
-                          className={cn(
-                            'text-sm mt-1.5 leading-relaxed',
-                            isUnread ? 'font-semibold text-[#1c1c1c]' : 'font-normal text-[#4a4946]'
-                          )}
-                        >
-                          {item.message}
-                        </p>
+                        {/* Middle: Human-readable message with quote block for completion notes */}
+                        {item.message?.includes('\n') ? (
+                          <div className="mt-1.5 space-y-1.5">
+                            <p
+                              className={cn(
+                                'text-sm leading-relaxed',
+                                isUnread ? 'font-semibold text-[#1c1c1c]' : 'font-normal text-[#4a4946]'
+                              )}
+                            >
+                              {item.message.split('\n')[0]}
+                            </p>
+                            <div className="rounded-lg bg-[#f7f4ed] border-l-2 border-[#1c1c1c]/30 px-3 py-2 text-xs text-[#2c2c2b] italic">
+                              {item.message.split('\n').slice(1).join('\n')}
+                            </div>
+                          </div>
+                        ) : (
+                          <p
+                            className={cn(
+                              'text-sm mt-1.5 leading-relaxed',
+                              isUnread ? 'font-semibold text-[#1c1c1c]' : 'font-normal text-[#4a4946]'
+                            )}
+                          >
+                            {item.message}
+                          </p>
+                        )}
 
                         {/* Bottom contextual actions */}
                         <div className="mt-3 flex items-center justify-between pt-2 border-t border-[#f2efe8]/80">
@@ -346,7 +381,6 @@ export function AlertsPage() {
                               onClick={() => markReadMutation.mutate(item.id)}
                               disabled={markReadMutation.isPending && markReadMutation.variables === item.id}
                               className="h-7 px-2.5 text-xs font-medium text-[#5f5f5d] hover:text-[#1c1c1c] hover:bg-[#eceae4] rounded-md transition-colors"
-                              title="Mark as read"
                             >
                               <FiCheck className="h-3 w-3 mr-1" />
                               Mark read
@@ -358,6 +392,44 @@ export function AlertsPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Activity Notifications Pagination Footer */}
+          {activityPagination.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-[#eceae4] pt-3 text-xs text-[#5f5f5d]">
+              <span>
+                Showing {(activityPagination.page - 1) * activityPagination.limit + 1}–
+                {Math.min(activityPagination.page * activityPagination.limit, activityPagination.total)} of{' '}
+                {activityPagination.total} notifications
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={activityPagination.page <= 1}
+                  onClick={() => setActivityPage((prev) => Math.max(1, prev - 1))}
+                  className="h-7 text-xs px-2.5 bg-white border-[#eceae4]"
+                >
+                  <FiChevronLeft className="h-3.5 w-3.5 mr-1" />
+                  Previous
+                </Button>
+                <span className="px-2 text-xs font-medium text-[#1c1c1c]">
+                  Page {activityPagination.page} of {activityPagination.totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={activityPagination.page >= activityPagination.totalPages}
+                  onClick={() => setActivityPage((prev) => prev + 1)}
+                  className="h-7 text-xs px-2.5 bg-white border-[#eceae4]"
+                >
+                  Next
+                  <FiChevronRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </div>
             </div>
           )}
         </TabsContent>

@@ -27,5 +27,16 @@ export interface NotificationCountResponse {
 
 export interface NotificationListQuery {
   status?: 'all' | 'unread' | 'read';
+  page?: number;
   limit?: number;
+}
+
+export interface NotificationListResponse {
+  notifications: ActivityNotificationItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }

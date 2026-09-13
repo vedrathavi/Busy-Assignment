@@ -9,7 +9,9 @@ export type ActivityNotificationType =
   | 'NOTE_ADDED'
   | 'COLLABORATOR_ADDED'
   | 'COLLABORATOR_REMOVED'
-  | 'OWNER_CHANGED';
+  | 'OWNER_CHANGED'
+  | 'TASK_ASSIGNED'
+  | 'TASK_COMPLETED';
 
 export interface ActivityNotificationItem {
   id: string;
@@ -36,7 +38,15 @@ export interface NotificationCountResponse {
   totalCount: number;
 }
 
+export interface NotificationPagination {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface NotificationListQuery {
   status?: 'all' | 'unread' | 'read';
+  page?: number;
   limit?: number;
 }

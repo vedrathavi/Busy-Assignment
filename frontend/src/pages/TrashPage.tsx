@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  FiTrash2,
   FiSearch,
   FiChevronLeft,
   FiChevronRight,
@@ -26,6 +25,12 @@ import { TableSkeleton } from '@/components/common/SkeletonLoader';
 import { EmptyState } from '@/components/common/EmptyState';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
+import {
+  PageHeader,
+  PageHeaderHeading,
+  PageHeaderTitle,
+  PageHeaderDescription,
+} from '@/components/ui/page-header';
 
 const STAGE_BADGE_STYLES: Record<DealStage, { bg: string; text: string; border: string }> = {
   NEW: { bg: 'bg-stone-100', text: 'text-stone-800', border: 'border-stone-200' },
@@ -54,15 +59,14 @@ export function TrashPage() {
   return (
     <div className="space-y-4 animate-in fade-in duration-200 w-full">
       {/* Top Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-[#1c1c1c] flex items-center gap-2.5">
-          <FiTrash2 className="h-6 w-6 text-[#1c1c1c]" />
-          Trash Archive
-        </h1>
-        <p className="text-xs text-[#5f5f5d] mt-1">
-          Historical archive of soft-deleted opportunities. Records are preserved for audit integrity and excluded from pipeline reports.
-        </p>
-      </div>
+      <PageHeader>
+        <PageHeaderHeading>
+          <PageHeaderTitle>Trash Archive</PageHeaderTitle>
+          <PageHeaderDescription>
+            Historical archive of soft-deleted opportunities. Records are preserved for audit integrity and excluded from pipeline reports.
+          </PageHeaderDescription>
+        </PageHeaderHeading>
+      </PageHeader>
 
       {/* Info Banner */}
       <div className="flex items-center gap-3 rounded-[10px] border border-amber-200/80 bg-amber-50/70 p-3.5 text-xs text-amber-950">

@@ -24,6 +24,8 @@ erDiagram
     DEAL ||--o{ DEAL_COLLABORATOR : "has collaborators"
     DEAL ||--o{ DEAL_HISTORY : "logs timeline events"
     DEAL ||--o| DEAL_ALERT : "generates overdue alert"
+    DEAL ||--o{ TASK : "has action tasks"
+    USER ||--o{ TASK : "assigned / created"
 
     ORGANIZATION {
         uuid id PK
@@ -106,6 +108,50 @@ erDiagram
         date dismissedCloseDate "PostgreSQL DATE (@db.Date)"
         datetime dismissedAt
     }
+
+    TASK {
+        uuid id PK
+        uuid teamId FK
+        uuid dealId FK
+        uuid createdById FK
+        uuid assignedToId FK "Legacy compatibility field"
+        string title
+        text description
+        enum priority "LOW | MEDIUM | HIGH"
+        date dueDate "PostgreSQL DATE (@db.Date)"
+        datetime completedAt "Overall task completion (NULL = Open)"
+        datetime deletedAt
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    TASK_ASSIGNEE {
+        uuid id PK
+        uuid taskId FK "ON DELETE CASCADE"
+        uuid userId FK "ON DELETE CASCADE"
+        datetime assignedAt
+        datetime completedAt "Individual assignee completion (NULL = Open)"
+        text completionNote "Optional note provided by assignee upon completion"
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    NOTIFICATION {
+        uuid id PK
+        uuid userId FK "ON DELETE CASCADE"
+        uuid dealId FK "Nullable, ON DELETE CASCADE"
+        enum type "TASK_ASSIGNED | TASK_COMPLETED | DEAL_OVERDUE | DEAL_STAGE_ADVANCED | ..."
+        string title
+        text message
+        datetime readAt "NULL = Unread"
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    DEAL ||--o{ TASK : "has tasks"
+    TASK ||--o{ TASK_ASSIGNEE : "has assignees"
+    USER ||--o{ TASK_ASSIGNEE : "assigned to"
+    USER ||--o{ NOTIFICATION : "receives"
 ```
 
 ---
@@ -156,55 +202,55 @@ Organizations/clients being sold to.
 | `id` | UUID | Primary Key, default UUIDv4 | Unique company identifier |
 | `teamId` | UUID | NOT NULL, Foreign Key → `Team.id` | Team ownership boundary |
 | `ownerId` | UUID | NOT NULL, Foreign Key → `User.id` | Owning Sales Rep |
-| `name` | VARCHAR(255) | NOT NULL | Company name (NOT globally unique; duplicate warnings handled in app) |
-| `industry` | VARCHAR(100) | NOT NULL | Business industry/vertical |
-| `website` | VARCHAR(255) | NULLABLE | Company website URL |
-| `isArchived` | BOOLEAN | NOT NULL, default FALSE | Soft-archive flag (hides from default views) |
-| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Record creation timestamp |
-| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Last modification timestamp |
+| `name` | VARCHAR(255) | NOT NULL | Company name |
+| `industry` | VARCHAR(255) | NULLABLE | Industry vertical |
+| `website` | VARCHAR(255) | NULLABLE | Official company URL |
+| `isArchived` | BOOLEAN | NOT NULL, default `false` | Soft-archived state flag |
+| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Creation timestamp |
+| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Modification timestamp |
 
 ### 2.5 `Deal`
-The core business entity representing a commercial transaction.
+Primary revenue entity with stage progression and soft deletion.
 
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | Primary Key, default UUIDv4 | Unique deal identifier |
 | `teamId` | UUID | NOT NULL, Foreign Key → `Team.id` | Organizational scope |
-| `companyId` | UUID | NOT NULL, Foreign Key → `Company.id` | Target client company |
-| `ownerId` | UUID | NOT NULL, Foreign Key → `User.id` | Assigned deal owner (sales rep) |
-| `title` | VARCHAR(255) | NOT NULL | Deal title/opportunity description |
-| `value` | DECIMAL(14,2) | NOT NULL | Exact monetary value (`NUMERIC(14,2)`) |
-| `expectedCloseDate`| DATE | NOT NULL (`DateTime @db.Date`) | Target closing calendar date (no time-of-day component) |
-| `stage` | ENUM (`DealStage`) | NOT NULL, default `NEW` | Lifecycle stage: `NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST` |
-| `closedAt` | TIMESTAMP | NULLABLE | Timestamp when deal entered `WON` or `LOST` |
-| `previousStage` | ENUM (`DealStage`) | NULLABLE | Immediate preceding stage before closing (used for Manager reopen) |
-| `deletedAt` | TIMESTAMP | NULLABLE | Timestamp when deal was soft-deleted (NULL = active, non-null = in trash) |
+| `companyId` | UUID | NOT NULL, Foreign Key → `Company.id` | Associated target company |
+| `ownerId` | UUID | NOT NULL, Foreign Key → `User.id` | Primary Deal Owner (Sales Rep) |
+| `title` | VARCHAR(255) | NOT NULL | Deal title/opportunity name |
+| `value` | NUMERIC(14,2) | NOT NULL | Financial pipeline value |
+| `expectedCloseDate` | DATE | NOT NULL (`DateTime @db.Date`) | Target close calendar date |
+| `stage` | ENUM (`DealStage`) | NOT NULL | Pipeline lifecycle stage |
+| `closedAt` | TIMESTAMP | NULLABLE | Timestamp when marked Won or Lost |
+| `previousStage` | ENUM (`DealStage`) | NULLABLE | Pre-closure stage for reopening |
+| `deletedAt` | TIMESTAMP | NULLABLE | Soft-delete timestamp (Trash) |
 | `deletedById` | UUID | NULLABLE, Foreign Key → `User.id` | User who soft-deleted the deal |
 | `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Creation timestamp |
-| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Last modification timestamp |
+| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Modification timestamp |
 
 ### 2.6 `DealCollaborator`
-Explicit many-to-many junction table linking Deals to assisting Sales Reps.
+Junction table enabling multiple Sales Reps to collaborate on the same deal.
 
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
-| `dealId` | UUID | Composite PK, Foreign Key → `Deal.id` (ON DELETE CASCADE) | Referenced deal |
-| `userId` | UUID | Composite PK, Foreign Key → `User.id` (ON DELETE CASCADE) | Collaborating sales rep |
-| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Timestamp collaboration was granted |
+| `dealId` | UUID | Primary Key (Composite), Foreign Key → `Deal.id` (**ON DELETE CASCADE**) | Target deal |
+| `userId` | UUID | Primary Key (Composite), Foreign Key → `User.id` (**ON DELETE CASCADE**) | Collaborating Sales Rep |
+| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Assignment timestamp |
 
 ### 2.7 `DealHistory`
-Append-only immutable audit trail for every critical deal event. **No edit or delete API endpoints exist.**
+Immutable, append-only audit trail capturing every stage change, ownership reassignment, collaborator update, and note.
 
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | Primary Key, default UUIDv4 | Unique event identifier |
-| `dealId` | UUID | NOT NULL, Foreign Key → `Deal.id` | Target deal (retained permanently alongside soft-deleted deals) |
-| `actorId` | UUID | NOT NULL, Foreign Key → `User.id` | User who performed the action |
-| `type` | ENUM (`HistoryType`)| NOT NULL | `CREATED`, `STAGE_CHANGED`, `OWNER_CHANGED`, `COLLABORATOR_ADDED`, `COLLABORATOR_REMOVED`, `NOTE_ADDED`, `REOPENED`, `DELETED` |
-| `oldStage` | ENUM (`DealStage`) | NULLABLE | Pre-transition stage |
-| `newStage` | ENUM (`DealStage`) | NULLABLE | Post-transition stage |
-| `oldOwnerId` | UUID | NULLABLE, Foreign Key → `User.id` | Previous owner (for reassignments) |
-| `newOwnerId` | UUID | NULLABLE, Foreign Key → `User.id` | New owner (for reassignments) |
+| `dealId` | UUID | NOT NULL, Foreign Key → `Deal.id` | Associated deal |
+| `actorId` | UUID | NOT NULL, Foreign Key → `User.id` | User who initiated the action |
+| `type` | ENUM (`HistoryType`) | NOT NULL | Audit event type |
+| `oldStage` | ENUM (`DealStage`) | NULLABLE | Previous pipeline stage |
+| `newStage` | ENUM (`DealStage`) | NULLABLE | Resulting pipeline stage |
+| `oldOwnerId` | UUID | NULLABLE, Foreign Key → `User.id` | Former deal owner ID |
+| `newOwnerId` | UUID | NULLABLE, Foreign Key → `User.id` | Newly assigned owner ID |
 | `collaboratorId` | UUID | NULLABLE, Foreign Key → `User.id` | Added or removed collaborator user ID |
 | `reason` | TEXT | NULLABLE | Mandatory reason when moving backward |
 | `note` | TEXT | NULLABLE | Free-text note added by rep/manager |
@@ -215,9 +261,64 @@ Tracks dismissal state for overdue deal notifications.
 
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
-| `dealId` | UUID | Primary Key, Foreign Key → `Deal.id` (**ON DELETE CASCADE**) | Target overdue deal |
-| `dismissedCloseDate` | DATE | NOT NULL (`DateTime @db.Date`) | The exact `expectedCloseDate` that was dismissed by the deal owner |
-| `dismissedAt` | TIMESTAMP | NOT NULL, default NOW() | Timestamp owner dismissed the current alert |
+| `id` | UUID | Primary Key, default UUIDv4 | Unique alert identifier |
+| `notificationId` | UUID | NOT NULL, UNIQUE, Foreign Key → `Notification.id` (**ON DELETE CASCADE**) | Linked notification |
+| `dealId` | UUID | NOT NULL, UNIQUE, Foreign Key → `Deal.id` (**ON DELETE CASCADE**) | Target overdue deal |
+| `dismissedCloseDate` | DATE | NULLABLE (`DateTime @db.Date`) | The exact `expectedCloseDate` that was dismissed |
+| `dismissedAt` | TIMESTAMP | NULLABLE | Timestamp owner dismissed the current alert |
+| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Creation timestamp |
+| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Modification timestamp |
+
+### 2.9 `Task`
+Actionable sales follow-up items linked to specific deals. Supports multi-assignee assignment at creation time.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | UUID | Primary Key, default UUIDv4 | Unique task identifier |
+| `teamId` | UUID | NOT NULL, Foreign Key → `Team.id` | Organizational scope |
+| `dealId` | UUID | NOT NULL, Foreign Key → `Deal.id` | Associated deal |
+| `createdById` | UUID | NOT NULL, Foreign Key → `User.id` | User who created the task |
+| `assignedToId` | UUID | NULLABLE, Foreign Key → `User.id` | Legacy compatibility field (derived from primary assignee) |
+| `title` | VARCHAR(255) | NOT NULL | Actionable task title |
+| `description` | TEXT | NULLABLE | Detailed instructions or talking points |
+| `priority` | ENUM (`TaskPriority`) | NOT NULL, default `MEDIUM` | `LOW`, `MEDIUM`, `HIGH` |
+| `dueDate` | DATE | NOT NULL (`DateTime @db.Date`) | Pure calendar target due date |
+| `completedAt` | TIMESTAMP | NULLABLE | Overall task completion timestamp (NULL = Open; set when ALL assignees complete) |
+| `deletedAt` | TIMESTAMP | NULLABLE | Soft-delete timestamp |
+| `deletedById` | UUID | NULLABLE, Foreign Key → `User.id` | User who deleted task |
+| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Creation timestamp |
+| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Modification timestamp |
+
+### 2.10 `TaskAssignee`
+Relational join model representing each assigned user on a task. Single source of truth for task assignments, individual completions, and completion notes.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | UUID | Primary Key, default UUIDv4 | Unique assignment identifier |
+| `taskId` | UUID | NOT NULL, Foreign Key → `Task.id` (**ON DELETE CASCADE**) | Target task |
+| `userId` | UUID | NOT NULL, Foreign Key → `User.id` (**ON DELETE CASCADE**) | Assigned Sales Rep |
+| `assignedAt` | TIMESTAMP | NOT NULL, default NOW() | Creation-time assignment timestamp |
+| `completedAt` | TIMESTAMP | NULLABLE | Individual assignee completion timestamp (NULL = Open) |
+| `completionNote` | TEXT | NULLABLE | Optional note provided by this specific assignee upon completion |
+| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Creation timestamp |
+| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Modification timestamp |
+
+> **Constraint**: `@@unique([taskId, userId])` enforces that a user can only be assigned once to the same task.
+
+### 2.11 `Notification`
+In-app notifications for task assignments, task completions, overdue deals, and deal lifecycle events.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | UUID | Primary Key, default UUIDv4 | Unique notification identifier |
+| `userId` | UUID | NOT NULL, Foreign Key → `User.id` (**ON DELETE CASCADE**) | Recipient user |
+| `dealId` | UUID | NULLABLE, Foreign Key → `Deal.id` (**ON DELETE CASCADE**) | Associated deal |
+| `type` | ENUM (`NotificationType`) | NOT NULL | `TASK_ASSIGNED`, `TASK_COMPLETED`, `DEAL_OVERDUE`, `DEAL_STAGE_ADVANCED`, etc. |
+| `title` | VARCHAR(255) | NULLABLE | Notification heading |
+| `message` | TEXT | NULLABLE | Structured notification body (includes assignee completion notes when provided) |
+| `readAt` | TIMESTAMP | NULLABLE | Read receipt timestamp (NULL = Unread) |
+| `createdAt` | TIMESTAMP | NOT NULL, default NOW() | Creation timestamp |
+| `updatedAt` | TIMESTAMP | NOT NULL, auto-updating | Modification timestamp |
 
 ---
 
@@ -236,6 +337,9 @@ Tracks dismissal state for overdue deal notifications.
 - **Deal → DealHistory**: `1 : N` (A deal has an ordered timeline of immutable events; permanently retained through soft deletion).
 - **User (Actor) → DealHistory**: `1 : N` (A user triggers multiple audit events).
 - **Deal → DealAlert**: `1 : 0..1` (A deal optionally has a dismissal record).
+- **Deal → Task**: `1 : N` (A deal has multiple follow-up tasks).
+- **Task ↔ User (Assignee)**: `N : M` (Resolved via `TaskAssignee` join table; one task can be assigned to multiple deal participants).
+- **User → Notification**: `1 : N` (A user receives multiple notifications).
 
 ---
 

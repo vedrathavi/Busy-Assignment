@@ -63,56 +63,31 @@ describe('Phase 10: Notification Foundation & Overdue DealAlerts Integration Tes
       },
     });
 
-    // Clean test collaborators and test history on Deal 15
-    await prisma.dealCollaborator.deleteMany({
-      where: { dealId: DEALS.d15 },
+    // Reset other deals that may have had temporary date changes during test
+    await prisma.deal.update({
+      where: { id: DEALS.d3 },
+      data: { expectedCloseDate: new Date('2026-10-15') },
     });
 
-    // Clean any test-created notifications/alerts
-    await prisma.dealAlert.deleteMany({
-      where: {
-        dealId: { notIn: [DEALS.d15] },
-      },
+    await prisma.deal.update({
+      where: { id: DEALS.d5 },
+      data: { expectedCloseDate: new Date('2026-08-20') },
     });
 
-    await prisma.notification.deleteMany({
-      where: {
-        id: { notIn: ['50000000-0000-4000-8000-000000000001'] },
-      },
+    await prisma.deal.update({
+      where: { id: DEALS.d18_softDeleted },
+      data: { expectedCloseDate: new Date('2026-09-10') },
     });
 
-    // Ensure Deal 15 has pristine seed dismissal
-    const seedNotif = await prisma.notification.upsert({
-      where: { id: '50000000-0000-4000-8000-000000000001' },
-      update: {
-        userId: USER_REP1_ID,
-        type: NotificationType.DEAL_OVERDUE,
-        readAt: null,
-      },
-      create: {
-        id: '50000000-0000-4000-8000-000000000001',
-        userId: USER_REP1_ID,
-        type: NotificationType.DEAL_OVERDUE,
-        readAt: null,
-        createdAt: new Date('2026-09-06T09:00:00.000Z'),
-      },
+    // Clean exact test-created alert on Deal 14 if created
+    const d14Alert = await prisma.dealAlert.findUnique({
+      where: { dealId: DEALS.d14 },
+      select: { id: true, notificationId: true },
     });
-
-    await prisma.dealAlert.upsert({
-      where: { dealId: DEALS.d15 },
-      update: {
-        notificationId: seedNotif.id,
-        dismissedCloseDate: new Date('2026-09-05'),
-        dismissedAt: new Date('2026-09-06T09:00:00.000Z'),
-      },
-      create: {
-        id: '60000000-0000-4000-8000-000000000001',
-        notificationId: seedNotif.id,
-        dealId: DEALS.d15,
-        dismissedCloseDate: new Date('2026-09-05'),
-        dismissedAt: new Date('2026-09-06T09:00:00.000Z'),
-      },
-    });
+    if (d14Alert) {
+      await prisma.dealAlert.delete({ where: { id: d14Alert.id } });
+      await prisma.notification.delete({ where: { id: d14Alert.notificationId } });
+    }
   };
 
   beforeAll(async () => {

@@ -41,6 +41,12 @@ enum HistoryType {
   DELETED
 }
 
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum NotificationType {
   DEAL_OVERDUE
   DEAL_CREATED
@@ -53,6 +59,8 @@ enum NotificationType {
   COLLABORATOR_ADDED
   COLLABORATOR_REMOVED
   OWNER_CHANGED
+  TASK_ASSIGNED
+  TASK_COMPLETED
 }
 
 // --------------------------------------------------
@@ -80,6 +88,7 @@ model Team {
   users        User[]
   companies    Company[]
   deals        Deal[]
+  tasks        Task[]
 }
 
 model User {
@@ -105,6 +114,10 @@ model User {
   historyNewOwner     DealHistory[]      @relation("HistoryNewOwner")
   historyCollaborator DealHistory[]      @relation("HistoryCollaborator")
   notifications       Notification[]     @relation("UserNotifications")
+  createdTasks        Task[]             @relation("TaskCreatedBy")
+  assignedTasks       Task[]             @relation("TaskAssignedTo")
+  taskAssignments     TaskAssignee[]     @relation("TaskAssigneeUser")
+  deletedTasks        Task[]             @relation("TaskDeletedBy")
 }
 
 model Company {
@@ -152,6 +165,7 @@ model Deal {
   history       DealHistory[]
   alert         DealAlert?
   notifications Notification[]     @relation("DealNotifications")
+  tasks         Task[]
 
   @@index([teamId, deletedAt])
   @@index([teamId, stage])
@@ -227,4 +241,57 @@ model DealAlert {
 
   notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
   deal         Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id           String       @id @default(uuid()) @db.Uuid
+  teamId       String       @db.Uuid
+  dealId       String       @db.Uuid
+
+  title        String       @db.VarChar(255)
+  description  String?      @db.Text
+  priority     TaskPriority @default(MEDIUM)
+
+  createdById  String       @db.Uuid
+  assignedToId String?      @db.Uuid
+
+  dueDate      DateTime     @db.Date
+  completedAt  DateTime?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  deletedAt    DateTime?
+  deletedById  String?      @db.Uuid
+
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  deal         Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  assignedTo   User?        @relation("TaskAssignedTo", fields: [assignedToId], references: [id])
+  deletedBy    User?        @relation("TaskDeletedBy", fields: [deletedById], references: [id])
+
+  assignees    TaskAssignee[]
+
+  @@index([dealId, dueDate])
+  @@index([assignedToId, completedAt, dueDate])
+  @@index([teamId, completedAt, dueDate])
+  @@index([teamId, priority, completedAt])
+}
+
+model TaskAssignee {
+  id             String    @id @default(uuid()) @db.Uuid
+  taskId         String    @db.Uuid
+  userId         String    @db.Uuid
+  assignedAt     DateTime  @default(now())
+  completedAt    DateTime?
+  completionNote String?   @db.Text
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  task           Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user           User      @relation("TaskAssigneeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId, completedAt])
+  @@index([taskId])
 }

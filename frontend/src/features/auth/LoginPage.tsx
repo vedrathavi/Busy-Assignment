@@ -542,14 +542,14 @@ export function LoginPage() {
                   {/* Visual Chart Bars (Realistic Charcoal Bars on Cream Surface) */}
                   <div className="pt-2">
                     <div className="flex items-end gap-2 h-20 pt-1 border-b border-[#eceae4] pb-1">
-                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[35%]" title="Week 1: 2" />
-                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[50%]" title="Week 2: 3" />
-                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[40%]" title="Week 3: 2" />
-                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[65%]" title="Week 4: 4" />
-                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[60%]" title="Week 5: 4" />
-                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[80%]" title="Week 6: 5" />
-                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[70%]" title="Week 7: 4" />
-                      <div className="flex-1 bg-emerald-700 rounded-t h-[95%]" title="Week 8: 6 (Peak)" />
+                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[35%]" />
+                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[50%]" />
+                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[40%]" />
+                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[65%]" />
+                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[60%]" />
+                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[80%]" />
+                      <div className="flex-1 bg-[#1c1c1c] rounded-t h-[70%]" />
+                      <div className="flex-1 bg-emerald-700 rounded-t h-[95%]" />
                     </div>
                     <div className="flex justify-between text-[8px] font-medium text-[#5f5f5d] pt-1">
                       <span>W1</span>

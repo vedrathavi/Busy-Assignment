@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken } from '../../middleware/authenticate';
 import { dealController } from './deal.controller';
+import { taskController } from '../tasks/task.controller';
 
 const router = Router();
 
@@ -35,6 +36,9 @@ router.delete('/:id/collaborators/:userId', (req, res, next) => dealController.r
 
 // Deal Notes
 router.post('/:id/notes', (req, res, next) => dealController.addNote(req, res, next));
+
+// Tasks for Deal
+router.post('/:id/tasks', (req, res, next) => taskController.createForDeal(req, res, next));
 
 // Immutable History API
 router.get('/:id/history', (req, res, next) => dealController.getHistory(req, res, next));

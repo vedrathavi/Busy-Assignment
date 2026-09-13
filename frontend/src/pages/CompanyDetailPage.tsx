@@ -34,6 +34,7 @@ import {
 import { AlertDialog } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { STAGE_LABELS } from '@/features/deals/deals.types';
@@ -552,11 +553,10 @@ export function CompanyDetailPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="dealDate">Expected Close Date *</Label>
-              <Input
+              <DatePicker
                 id="dealDate"
-                type="date"
                 value={dealDate}
-                onChange={(e) => setDealDate(e.target.value)}
+                onChange={setDealDate}
                 required
               />
             </div>

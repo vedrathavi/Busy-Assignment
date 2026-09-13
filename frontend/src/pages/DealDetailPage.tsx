@@ -21,6 +21,8 @@ import {
   FiUserMinus as UserMinus,
   FiChevronRight as ChevronRight,
   FiLoader,
+  FiCheckSquare as CheckSquare,
+  FiPlus as Plus,
 } from 'react-icons/fi';
 import {
   useDealDetail,
@@ -35,6 +37,10 @@ import {
   useAddDealNote,
   useDeals,
 } from '@/features/deals/useDeals';
+import { useDealTasks } from '@/features/tasks/useTasks';
+import { TaskCard } from '@/features/tasks/TaskCard';
+import { TaskFormDialog } from '@/features/tasks/TaskFormDialog';
+import { Task } from '@/features/tasks/tasks.types';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +58,7 @@ import { AlertDialog } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar } from '@/components/ui/avatar';
 import { UserSelector } from '@/components/common/UserSelector';
@@ -76,6 +83,10 @@ export function DealDetailPage() {
   const { data: deal, isLoading: isDealLoading, error: dealError } = useDealDetail(id);
   const { data: collaborators = [], isLoading: isCollabLoading } = useCollaborators(id);
   const { data: historyEvents = [], isLoading: isHistoryLoading } = useDealHistory(id);
+  const { data: dealTasksData, isLoading: isTasksLoading } = useDealTasks(id);
+  const dealTasks = dealTasksData?.tasks || [];
+  const openDealTasks = dealTasks.filter((t) => !t.completedAt);
+  const completedDealTasks = dealTasks.filter((t) => Boolean(t.completedAt));
 
   // Fetch sibling deals from same company
   const { data: siblingDealsData } = useDeals({
@@ -101,6 +112,8 @@ export function DealDetailPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isReopenOpen, setIsReopenOpen] = useState(false);
   const [isAddCollaboratorOpen, setIsAddCollaboratorOpen] = useState(false);
+  const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [targetBackwardStage, setTargetBackwardStage] = useState<DealStage>('NEW');
   const [backwardReason, setBackwardReason] = useState('');
   const [lostReason, setLostReason] = useState('');
@@ -662,6 +675,10 @@ export function DealDetailPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="tasks" className="gap-1.5">
+            <CheckSquare className="h-3.5 w-3.5" />
+            Tasks & Follow-ups ({openDealTasks.length})
+          </TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
           <TabsTrigger value="collaborators">
             Collaborators ({collaborators.length})
@@ -969,6 +986,103 @@ export function DealDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* Tab: Tasks & Follow-ups */}
+        <TabsContent value="tasks">
+          <Card className="border-[#eceae4] bg-[#fcfbf8] shadow-2xs">
+            <CardHeader className="pb-3 border-b border-[#eceae4]/70 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold text-[#1c1c1c] flex items-center gap-2">
+                  <CheckSquare className="h-4 w-4" /> Deal Tasks & Follow-ups
+                </CardTitle>
+                <p className="text-xs text-[#5f5f5d] mt-1">
+                  Action items and scheduled follow-ups for this opportunity.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingTask(null);
+                  setIsCreateTaskOpen(true);
+                }}
+                className="text-xs bg-[#1c1c1c] text-[#fcfbf8] gap-1 shadow-button-inset"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Task
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+              {isTasksLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-20 w-full bg-[#eceae4]" />
+                  <Skeleton className="h-20 w-full bg-[#eceae4]" />
+                </div>
+              ) : dealTasks.length === 0 ? (
+                <div className="p-8 text-center">
+                  <CheckSquare className="mx-auto h-8 w-8 text-[#5f5f5d]/40" />
+                  <p className="mt-2 text-sm font-medium text-[#1c1c1c]">No tasks or follow-ups yet</p>
+                  <p className="text-xs text-[#5f5f5d] mt-0.5">Create a task to maintain momentum on this deal.</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingTask(null);
+                      setIsCreateTaskOpen(true);
+                    }}
+                    className="mt-4 text-xs gap-1.5 border-[#eceae4]"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add First Task
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Open Tasks Section */}
+                  {openDealTasks.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">
+                        Open Tasks ({openDealTasks.length})
+                      </h3>
+                      <div className="grid grid-cols-1 gap-3">
+                        {openDealTasks.map((task) => (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            hideDealLink
+                            onEdit={(t) => {
+                              setEditingTask(t);
+                              setIsCreateTaskOpen(true);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Completed Tasks Section */}
+                  {completedDealTasks.length > 0 && (
+                    <div className="space-y-3 pt-4 border-t border-[#eceae4]/70">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">
+                        Completed Tasks ({completedDealTasks.length})
+                      </h3>
+                      <div className="grid grid-cols-1 gap-3">
+                        {completedDealTasks.map((task) => (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            hideDealLink
+                            onEdit={(t) => {
+                              setEditingTask(t);
+                              setIsCreateTaskOpen(true);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Tab 5: Company Deals */}
         <TabsContent value="company">
           <Card className="border-[#eceae4] bg-[#fcfbf8] shadow-2xs">
@@ -1039,11 +1153,10 @@ export function DealDetailPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="editDealDate">Expected Close Date *</Label>
-              <Input
+              <DatePicker
                 id="editDealDate"
-                type="date"
                 value={editDate}
-                onChange={(e) => setEditDate(e.target.value)}
+                onChange={setEditDate}
                 required
               />
             </div>
@@ -1236,6 +1349,13 @@ export function DealDetailPage() {
           </form>
         </DialogContent>
       </Dialog>
+      {/* Add / Edit Task Dialog */}
+      <TaskFormDialog
+        isOpen={isCreateTaskOpen}
+        onClose={() => setIsCreateTaskOpen(false)}
+        task={editingTask || undefined}
+        dealId={deal.id}
+      />
     </div>
   );
 }

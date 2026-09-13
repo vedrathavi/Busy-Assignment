@@ -24,46 +24,14 @@ describe('Optional Addon: Deal Activity Notifications Integration Tests', { time
   // Track created test deal IDs for clean up
   const createdTestDealIds: string[] = [];
 
-  const TEST_TITLES = [
-    'Test Notification Deal',
-    'Stage Advance Notification Deal',
-    'Actor Excluded Deal',
-    'Regress Deal',
-    'Won Deal',
-    'Lost Deal',
-    'Reopen Deal',
-    'Note Deal',
-    'Collab Add Deal',
-    'Collab Remove Deal',
-    'Owner Changed Deal',
-    'Bulk Advance Success 1',
-    'Bulk Advance Success 2',
-    'Bulk Advance Fail 1',
-    'Bulk Reassign 1',
-    'Bulk Reassign 2',
-    'Private Notification Deal',
-    'Count Test Deal',
-    'Isolation Deal',
-    'Filter Test Deal',
-    'Rollback Deal',
-  ];
-
   const cleanupTestDeals = async () => {
-    const deals = await prisma.deal.findMany({
-      where: {
-        OR: [
-          { id: { in: createdTestDealIds } },
-          { title: { in: TEST_TITLES } },
-        ],
-      },
-      select: { id: true },
-    });
-    const ids = deals.map((d) => d.id);
-    if (ids.length > 0) {
+    if (createdTestDealIds.length > 0) {
+      const ids = [...createdTestDealIds];
       await prisma.notification.deleteMany({ where: { dealId: { in: ids } } });
       await prisma.dealCollaborator.deleteMany({ where: { dealId: { in: ids } } });
       await prisma.dealHistory.deleteMany({ where: { dealId: { in: ids } } });
       await prisma.deal.deleteMany({ where: { id: { in: ids } } });
+      createdTestDealIds.length = 0;
     }
   };
 
@@ -72,9 +40,6 @@ describe('Optional Addon: Deal Activity Notifications Integration Tests', { time
     rep1Token = signToken({ sub: USER_REP1_ID });
     rep2Token = signToken({ sub: USER_REP2_ID });
     rep3Token = signToken({ sub: USER_REP3_ID });
-
-    // Ensure any leftover artifacts from previously interrupted test runs are cleared
-    await cleanupTestDeals();
   });
 
   afterAll(async () => {
@@ -524,5 +489,34 @@ describe('Optional Addon: Deal Activity Notifications Integration Tests', { time
       where: { dealId: deal.id },
     });
     expect(notifs.length).toBe(0);
+  });
+
+  // 20. Server-side pagination for activity notifications
+  it('20. should support server-side pagination with limit and page and return pagination metadata', async () => {
+    const res = await request(app)
+      .get('/api/notifications?page=1&limit=5')
+      .set('Authorization', `Bearer ${rep1Token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeLessThanOrEqual(5);
+    expect(res.body.pagination).toBeDefined();
+    expect(res.body.pagination.page).toBe(1);
+    expect(res.body.pagination.limit).toBe(5);
+    expect(typeof res.body.pagination.total).toBe('number');
+    expect(typeof res.body.pagination.totalPages).toBe('number');
+  });
+
+  // 21. Lightweight notification bell retrieval
+  it('21. should support lightweight recent notifications retrieval with limit=5 for bell preview', async () => {
+    const res = await request(app)
+      .get('/api/notifications?limit=5')
+      .set('Authorization', `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeLessThanOrEqual(5);
   });
 });

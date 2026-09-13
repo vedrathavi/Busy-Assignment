@@ -11,6 +11,7 @@ import { LuCheckCheck } from 'react-icons/lu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   useNotificationCount,
-  useNotifications,
+  useRecentNotifications,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from './useNotifications';
@@ -52,8 +53,8 @@ export function NotificationBell() {
   const { data: countData } = useNotificationCount();
   const { data: alertsCountData } = useAlertsCount();
 
-  // Full notifications list: only requested when dropdown is open or invalidated
-  const { data: notifications, isLoading } = useNotifications('all');
+  // Lightweight recent activity preview: only requests 5 items when dropdown is open
+  const { data: recentNotifications, isLoading } = useRecentNotifications(5);
 
   const markReadMutation = useMarkNotificationRead();
   const markAllMutation = useMarkAllNotificationsRead();
@@ -61,9 +62,6 @@ export function NotificationBell() {
   const unreadActivity = countData?.unreadCount ?? 0;
   const overdueAlerts = alertsCountData?.count ?? 0;
   const totalBadge = unreadActivity + overdueAlerts;
-
-  // Show only a small number of recent activity items (max 5)
-  const recentNotifications = (notifications || []).slice(0, 5);
 
   const handleNotificationClick = (item: ActivityNotificationItem) => {
     if (!item.readAt) {
@@ -133,7 +131,7 @@ export function NotificationBell() {
               <Skeleton className="h-9 w-full rounded-lg bg-[#eceae4]/60" />
               <Skeleton className="h-9 w-full rounded-lg bg-[#eceae4]/60" />
             </div>
-          ) : recentNotifications.length === 0 ? (
+          ) : !recentNotifications || recentNotifications.length === 0 ? (
             <div className="p-6 text-center">
               <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#eceae4] text-[#5f5f5d] mb-2">
                 <FiBell className="h-4 w-4" />
@@ -144,7 +142,7 @@ export function NotificationBell() {
               </p>
             </div>
           ) : (
-            recentNotifications.map((item) => (
+            (recentNotifications || []).map((item: ActivityNotificationItem) => (
               <div
                 key={item.id}
                 onClick={() => handleNotificationClick(item)}
@@ -154,22 +152,42 @@ export function NotificationBell() {
                   {/* Status Indicator */}
                   <div className="mt-1 shrink-0">
                     {!item.readAt ? (
-                      <span className="flex h-2 w-2 rounded-full bg-emerald-600 shadow-xs" title="Unread" />
+                      <Tooltip content="Unread notification" side="top">
+                        <span className="flex h-2 w-2 rounded-full bg-emerald-600 shadow-xs" />
+                      </Tooltip>
                     ) : (
-                      <LuCheckCheck className="h-3.5 w-3.5 text-[#8c8b87]" title="Read" />
+                      <Tooltip content="Read" side="top">
+                        <LuCheckCheck className="h-3.5 w-3.5 text-[#8c8b87]" />
+                      </Tooltip>
                     )}
                   </div>
 
                   {/* Message & Time */}
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={cn(
-                        'text-xs leading-snug line-clamp-2',
-                        !item.readAt ? 'font-semibold text-[#1c1c1c]' : 'font-normal text-[#5f5f5d]'
-                      )}
-                    >
-                      {item.message}
-                    </p>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    {item.message?.includes('\n') ? (
+                      <>
+                        <p
+                          className={cn(
+                            'text-xs leading-snug',
+                            !item.readAt ? 'font-semibold text-[#1c1c1c]' : 'font-normal text-[#5f5f5d]'
+                          )}
+                        >
+                          {item.message.split('\n')[0]}
+                        </p>
+                        <p className="text-[11px] italic text-[#5f5f5d] bg-[#f7f4ed] rounded px-2 py-1 border-l-2 border-[#1c1c1c]/30">
+                          {item.message.split('\n').slice(1).join(' ')}
+                        </p>
+                      </>
+                    ) : (
+                      <p
+                        className={cn(
+                          'text-xs leading-snug line-clamp-2',
+                          !item.readAt ? 'font-semibold text-[#1c1c1c]' : 'font-normal text-[#5f5f5d]'
+                        )}
+                      >
+                        {item.message}
+                      </p>
+                    )}
                     <span className="text-[10px] text-[#8c8b87] mt-0.5 block">
                       {formatRelativeTime(item.createdAt)}
                     </span>
@@ -178,17 +196,19 @@ export function NotificationBell() {
 
                 {/* Mark as read quick button */}
                 {!item.readAt && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      markReadMutation.mutate(item.id);
-                    }}
-                    title="Mark as read"
-                    className="shrink-0 p-1 text-[#8c8b87] hover:text-[#1c1c1c] hover:bg-[#eceae4] rounded transition-colors"
-                  >
-                    <FiCheck className="h-3.5 w-3.5" />
-                  </button>
+                  <Tooltip content="Mark as read" side="top">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markReadMutation.mutate(item.id);
+                      }}
+                      aria-label="Mark as read"
+                      className="shrink-0 p-1 text-[#8c8b87] hover:text-[#1c1c1c] hover:bg-[#eceae4] rounded transition-colors cursor-pointer"
+                    >
+                      <FiCheck className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             ))

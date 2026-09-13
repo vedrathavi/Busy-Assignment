@@ -9,7 +9,8 @@ const idParamSchema = z.object({
 
 const querySchema = z.object({
   status: z.enum(['all', 'unread', 'read']).optional().default('all'),
-  limit: z.coerce.number().int().positive().optional().default(50),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().optional().default(20),
 });
 
 export class NotificationController {
@@ -17,7 +18,7 @@ export class NotificationController {
 
   /**
    * GET /api/notifications
-   * Returns activity notifications for the authenticated user.
+   * Returns activity notifications for the authenticated user with server-side pagination.
    */
   public getNotifications = async (
     req: Request,
@@ -30,11 +31,12 @@ export class NotificationController {
       }
 
       const query = querySchema.parse(req.query);
-      const notifications = await this.service.getNotifications(req.user, query);
+      const result = await this.service.getNotifications(req.user, query);
 
       res.status(200).json({
         success: true,
-        data: notifications,
+        data: result.notifications,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);

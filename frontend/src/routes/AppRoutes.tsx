@@ -8,6 +8,7 @@ import { CompaniesPage } from '@/pages/CompaniesPage';
 import { CompanyDetailPage } from '@/pages/CompanyDetailPage';
 import { DealsPage } from '@/pages/DealsPage';
 import { DealDetailPage } from '@/pages/DealDetailPage';
+import { TasksPage } from '@/pages/TasksPage';
 import { AlertsPage } from '@/pages/AlertsPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { UserDetailPage } from '@/pages/UserDetailPage';
@@ -50,6 +51,7 @@ export function AppRoutes() {
         <Route path="/companies/:id" element={<CompanyDetailPage />} />
         <Route path="/deals" element={<DealsPage />} />
         <Route path="/deals/:id" element={<DealDetailPage />} />
+        <Route path="/tasks" element={<TasksPage />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/users/:id" element={<UserDetailPage />} />
         <Route path="/alerts" element={<AlertsPage />} />

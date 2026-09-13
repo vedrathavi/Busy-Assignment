@@ -4,6 +4,7 @@ import {
   FiGrid,
   FiGlobe,
   FiTrendingUp,
+  FiCheckSquare,
   FiBell,
   FiZap,
   FiUsers,
@@ -17,6 +18,7 @@ import { useNotificationCount } from '@/features/notifications/useNotifications'
 import { useUIStore } from '@/store/ui.store';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 export interface NavItem {
@@ -40,6 +42,11 @@ export const navigationItems: NavItem[] = [
     title: 'Deals',
     href: '/deals',
     icon: FiTrendingUp,
+  },
+  {
+    title: 'Tasks & Follow-ups',
+    href: '/tasks',
+    icon: FiCheckSquare,
   },
   {
     title: 'Team',
@@ -97,7 +104,6 @@ export function Sidebar({ className, onNavigate, forceExpanded = false }: Sideba
         <button
           type="button"
           onClick={toggleSidebar}
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className="hidden lg:flex absolute -right-3 top-5 z-50 h-6 w-6 items-center justify-center rounded-full border border-[#eceae4] bg-white text-[#5f5f5d] shadow-xs transition-colors hover:bg-[#fcfbf8] hover:text-[#1c1c1c] cursor-pointer"
         >
@@ -146,15 +152,13 @@ export function Sidebar({ className, onNavigate, forceExpanded = false }: Sideba
               ? location.pathname === '/alerts' || location.pathname === '/notifications'
               : location.pathname.startsWith(item.href);
 
-            return (
+            const navLinkElement = (
               <NavLink
-                key={item.href}
                 to={item.href}
                 onClick={onNavigate}
-                title={isCollapsed ? item.title : undefined}
                 className={cn(
                   'group flex items-center rounded-[6px] text-xs transition-all duration-150',
-                  isCollapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2',
+                  isCollapsed ? 'justify-center p-2.5 w-full' : 'justify-between px-3 py-2',
                   isItemActive
                     ? 'bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset font-medium'
                     : 'text-[#1c1c1c] hover:bg-[rgba(28,28,28,0.04)] active:opacity-80'
@@ -187,6 +191,16 @@ export function Sidebar({ className, onNavigate, forceExpanded = false }: Sideba
                 )}
               </NavLink>
             );
+
+            if (isCollapsed) {
+              return (
+                <Tooltip key={item.href} content={item.title} side="right" className="z-50">
+                  <div className="w-full">{navLinkElement}</div>
+                </Tooltip>
+              );
+            }
+
+            return <React.Fragment key={item.href}>{navLinkElement}</React.Fragment>;
           })}
         </nav>
       </div>
@@ -195,10 +209,9 @@ export function Sidebar({ className, onNavigate, forceExpanded = false }: Sideba
       {user && (
         <div className="border-t border-[#eceae4] p-2.5">
           <div
-            title={isCollapsed ? `${user.name} (${user.role === 'MANAGER' ? 'Manager' : 'Rep'})` : undefined}
             className={cn(
               'flex items-center rounded-[6px] transition-colors hover:bg-[rgba(28,28,28,0.04)]',
-              isCollapsed ? 'justify-center p-1.5' : 'gap-2.5 p-2'
+              isCollapsed ? 'justify-center p-1.5 w-full' : 'gap-2.5 p-2'
             )}
           >
             <Avatar

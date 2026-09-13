@@ -45,6 +45,9 @@ Each significant entry records:
 | **Phase 18** (Prompt 24) | Manager Bulk Advance UX & Toaster Feedback | Implement Sonner toaster-based feedback for Manager Bulk Advance, per-deal Negotiation blocker messages, duplicate submission prevention, and query invalidation. |
 | **Addon Phase 1** (Prompt 25) | Deal Activity Notifications | Persistent in-app notifications for deal stakeholders via lightweight 30 s count polling, server-side recipient resolution, and a dual-tab Activity & Alerts page. |
 | **Bug Fix** (Prompt 26) | Duplicate Detection Authorization Leak | Fix `GET /api/companies/similar` leaking protected fields (owner, deal count) to unrelated Sales Reps; enforce server-side authorized vs. restricted response shape; update frontend to render safe restricted cards with no View action. |
+| **Addon Phase 2** (Prompt 27) | Deal Tasks & Follow-ups Queue | Implement deal tasks work queue (`dueDate: @db.Date`, priority, multi-faceted authorization, transactional notifications, note attachments, and 27 Vitest tests). |
+| **UX Refinement** (Prompt 28) | Task & Notification UX Refinement | Implement dual task perspectives (`assigned_to_me`, `assigned_by_me`, `team`), collaborator completion note propagation in notifications, and server-side pagination. |
+| **Multi-Assignee** (Prompt 29) | Multi-Assignee Tasks with Immutable Assignment | Relational `TaskAssignee` join model, creation-time frozen assignment list, strictly deal-scoped boundaries ($\text{requestedAssignees} \subseteq \text{deal.ownerId} \cup \text{collaborators}$), independent completions, and 20 Vitest tests. |
 
 ---
 
@@ -1091,3 +1094,150 @@ Each significant entry records:
   - Rejected any approach that merely hid owner and deal-count fields in React while still sending them from the backend — the fix is enforced in the service response contract, not in the view layer.
 
 - **Final outcome**: The `GET /api/companies/similar` endpoint now returns a server-enforced discriminated response — authorized users receive the full enriched preview; unauthorized users receive only a minimal safe payload containing name and industry. The frontend renders the appropriate card variant accordingly. All existing authorization rules, IDOR protections, company visibility scoping, and business logic remain completely unchanged.
+
+---
+
+## 2026-09-13 - Prompt 27 - Phase 2: Deal Tasks & Follow-ups (Sales Work Queue Addon)
+
+- **Problem / Task**:
+  Implement Phase 2 of the optional CRM addon: **Deal Tasks & Follow-ups** (an actionable sales work queue centered around deals) with task priority and calendar date semantics.
+  - Tasks represent actionable follow-ups directly associated with Deals.
+  - Calendar date semantics (`dueDate: DateTime @db.Date`).
+  - Prioritization (`LOW`, `MEDIUM`, `HIGH`).
+  - Transactional atomicity: task creation and reassignment atomically create `TASK_ASSIGNED` notifications; task completion atomically writes an optional `DealHistory` `NOTE_ADDED` note and creates a `TASK_COMPLETED` notification.
+  - Multi-faceted authorization rules strictly enforced on the server:
+    - **Visibility**: Manager, Deal Owner, Deal Collaborator, Current Task Assignee.
+    - **Management**: Manager, Deal Owner, Task Creator, Task Assignee.
+    - **Assignment**: Manager → any same-team Sales Rep; Deal Owner/Collaborator → self or active deal collaborator.
+  - Lifecycle boundaries: Company archival does not affect tasks; soft-deleted deals exclude tasks from task lists while preserving underlying task rows.
+  - No database wipe, seed, or truncate; zero external messaging infrastructure.
+
+- **User Intent**:
+  - Deliver a production-grade sales work queue that integrates naturally with Deal Detail, Deal History, Activity Notifications, and the existing role hierarchy.
+
+- **What IDE / Code Assistant implemented**:
+  - `backend/prisma/schema.prisma`:
+    - Added `TaskPriority` enum (`LOW`, `MEDIUM`, `HIGH`).
+    - Added `TASK_ASSIGNED`, `TASK_COMPLETED` to `NotificationType` enum.
+    - Added `Task` model (`dueDate DateTime @db.Date`, indexes on `[teamId, deletedAt]`, `[dealId]`, `[assignedToId]`, `[dueDate]`).
+    - Synced database non-destructively via `npx prisma db push`.
+  - `backend/src/modules/tasks/`:
+    - `task.types.ts`: DTOs, query parameters, response structures.
+    - `task.validator.ts`: Zod schemas for CRUD, date formats, and parameter parsing.
+    - `task.policy.ts`: Strict server-side authorization policies (`canViewTask`, `canManageTask`, `canDeleteTask`, `canAssignTaskToUser`).
+    - `task.repository.ts`: Repository with calendar-date boundary queries (`time=today`, `time=upcoming`, `time=overdue`), role-scoped visibility queries, and soft-delete exclusions.
+    - `task.service.ts`: Atomic `$transaction` orchestration across task CRUD, note attachments, and notification dispatches.
+    - `task.controller.ts` & `task.routes.ts`: REST endpoints mounted at `/api/tasks` and `POST /api/deals/:id/tasks`.
+  - `backend/src/__tests__/tasks.test.ts`:
+    - 27 comprehensive integration tests covering Authorization, CRUD, Lifecycle, DealHistory notes, Filters, and Activity Notifications.
+  - `frontend/src/features/tasks/`:
+    - `tasks.types.ts`, `tasks.api.ts`, `useTasks.ts`.
+    - `TaskCard.tsx`: Priority badge pill, calendar overdue/due-today status, quick-complete toggle, complete-with-note action, deal breadcrumb.
+    - `TaskFilters.tsx`: Scope toggle (Manager), status toggle (Open/Completed), calendar time pills (All, Today, Upcoming, Overdue), priority filter.
+    - `TaskFormDialog.tsx`: Dual-context modal with dynamic assignee filtering and deal selector.
+    - `CompleteTaskDialog.tsx`: Modal for adding optional notes upon completion.
+    - `TasksPage.tsx`: Dedicated global sales work queue page mounted at `/tasks`.
+  - `frontend/src/pages/DealDetailPage.tsx`:
+    - Added "Tasks & Follow-ups" tab with live open-task counter badge, task cards, and deal-scoped task creation dialog.
+  - `frontend/src/components/layout/Sidebar.tsx` & `AppRoutes.tsx`:
+    - Mounted `/tasks` navigation item with `FiCheckSquare` icon directly following Deals.
+  - Documentation:
+    - `docs/decisions.md`: Decision 30.
+    - `docs/schema.md`: Task entity, ER diagram, `@db.Date` semantics.
+    - `docs/ai-prompts.md`: Prompt 27.
+
+- **Human review / testing**:
+  - `npx vitest run src/__tests__/tasks.test.ts`: 27/27 tests passed (**100%**).
+  - `npx tsc --noEmit` in `backend/`: 0 errors.
+  - `npx tsc --noEmit` in `frontend/`: 0 errors.
+  - `npm run build` in `frontend/`: 0 errors (production bundle compiled successfully).
+  - `git diff --check`: 0 issues.
+  - Database integrity: 0 data loss, no reseeding/wiping performed.
+
+- **Final outcome**:
+  Phase 2 Deal Tasks & Follow-ups is complete, tested, and integrated end-to-end with the CRM's authorization matrix, notification system, and deal lifecycle.
+
+---
+
+## 2026-09-13 - Prompt 28 - Task & Notification UX Refinement Pass
+
+- **Problem / Task**:
+  Refine the Tasks and Notifications experience:
+  1. Add dual task perspectives ("Assigned to me" and "Assigned by me") in both UI and backend query layer.
+  2. Dynamically communicate assignment context on task cards (`Assigned by <Name>` vs `Assigned to <Name>`).
+  3. Propagate collaborator completion notes into `TASK_COMPLETED` notifications and format them into readable quote blocks in both Bell dropdown and Activity page.
+  4. Implement server-side pagination for tasks and notifications, keeping NotificationBell lightweight (fetching 5 recent items).
+  5. Retain exact-ID cleanup boundaries with zero database resets or data wipes.
+
+- **User Intent**:
+  Ensure sales reps and managers can easily track work they have delegated to collaborators, view replies on completed tasks directly from notifications, and enjoy responsive, paginated list performance without unbounded queries.
+
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/modules/tasks/`:
+    - Updated `task.types.ts` & `task.validator.ts` to support `scope: 'assigned_to_me' | 'assigned_by_me' | 'team' | 'mine'`.
+    - Updated `task.repository.ts` to execute `assigned_by_me` queries (`where.createdById = user.id`) and calculate `summary: { open, dueToday, overdue }` transactionally.
+    - Updated `task.service.ts` to format `TASK_COMPLETED` notifications with collaborator completion notes.
+  - `backend/src/modules/notifications/`:
+    - Updated `notification.types.ts`, `notification.repository.ts`, `notification.controller.ts` to support server-side pagination (`page`, `limit`) and return `{ total, page, limit, totalPages }`.
+  - `frontend/src/features/tasks/`:
+    - Updated `TaskFilters.tsx` with segmented perspective controls (`Assigned to me`, `Assigned by me`, `Team tasks`).
+    - Updated `TaskCard.tsx` with dynamic assignment context emphasizing assigner vs assignee based on current perspective.
+    - Updated `TasksPage.tsx` with summary count badges (`X Open`, `Y Due Today`, `Z Overdue`) and perspective routing.
+  - `frontend/src/features/notifications/`:
+    - Updated `notifications.types.ts` and `notificationVisuals.ts` with `TASK_ASSIGNED` and `TASK_COMPLETED`.
+    - Added `useRecentNotifications(5)` hook for lightweight bell dropdown.
+    - Formatted completion note quote blocks in `NotificationBell.tsx` and `AlertsPage.tsx`.
+    - Added server-side pagination controls in `AlertsPage.tsx`.
+  - `backend/src/__tests__/`:
+    - Added integration tests for dual perspective scoping, summary metrics, completion note notification content, and server-side pagination across `tasks.test.ts` and `notifications.test.ts`.
+
+- **Human review / testing**:
+  - `npx vitest run --no-cache`: 12/12 test files passed, 301/301 tests passed (**100%**).
+  - `npx tsc --noEmit` in `backend/` and `frontend/`: 0 errors.
+  - `npm run build` in `frontend/`: 0 errors (production bundle compiled cleanly in 6.42s).
+  - `verify-baseline.ts`: 100% of pre-existing database records verified intact.
+
+- **Final outcome**:
+  Task & Notification UX Refinement successfully implemented and verified with zero data loss, exact-ID cleanup boundaries, and full end-to-end integration.
+
+---
+
+## 2026-09-13 - Prompt 29 - Multi-Assignee Deal Tasks with Creation-Time Immutable Assignment
+
+- **Problem / Task**:
+  Implement the Multi-Assignee Deal Tasks enhancement in the existing BUSY Sales CRM:
+  1. A deal-related task can be assigned to **one or more authorized participants when the task is created**.
+  2. The assignment list becomes **strictly immutable immediately after creation** (no post-creation add/remove/reassign/edit-assignees).
+  3. Strictly deal-scoped eligible assignees at creation time: Exclusively `Deal Owner + Active Deal Collaborators` on that exact deal ($\text{requestedAssignees} \subseteq \{\text{deal.ownerId}\} \cup \{\text{activeCollaborators}\}$). Applies uniformly to Managers, Deal Owners, and Collaborators.
+  4. Collaborators can assign new tasks to other collaborators and to the Deal Owner.
+  5. Each assignee has an independent completion state and completion note.
+  6. Overall task is marked completed only when all assignees complete their individual assignments. Reopening an individual assignment resets overall task completion while preserving other assignees' work.
+  7. Non-destructive migration of existing `Task.assignedToId` into `TaskAssignee` relational model as the source of truth.
+  8. Exact-ID cleanup boundaries in tests, zero database resets or truncates, no git commits.
+
+- **User Intent**:
+  Enable collaborative execution on deal tasks without introducing complex post-creation assignment management. Once a task is created, its assignment list is frozen for accountability and auditability.
+
+- **What IDE / Code Assistant implemented**:
+  - `backend/prisma/schema.prisma`: Added `TaskAssignee` model with `(taskId, userId)` uniqueness, relations on `Task` and `User`.
+  - Non-destructive migration script `migrate-task-assignees.ts` migrating existing tasks to `TaskAssignee`.
+  - `backend/src/modules/tasks/`:
+    - `task.types.ts`: Added `TaskAssigneeSummary`, updated `TaskResponse`, `CreateTaskInput`, and `UpdateTaskInput`.
+    - `task.validator.ts`: Updated `createTaskSchema` for `assignedToIds: string[]` (min 1, deduplicated); removed assignee modification from `updateTaskSchema`.
+    - `task.policy.ts`: Enforces strict deal-scoped assignee eligibility (`Deal Owner + Active Collaborators`) uniformly across all roles; permits collaborator assigning to Deal Owner or other collaborators; permits individual completion and reopening for assignees.
+    - `task.repository.ts`: Transactional multi-assignee creation, query filtering matching `TaskAssignee`, individual completion with overall task recalculation, individual reopening.
+    - `task.service.ts`: Enforces atomic deal-scoped assignee validation, dispatches `TASK_ASSIGNED` notifications to all assignees on creation, individual `TASK_COMPLETED` notifications with notes.
+  - `frontend/src/features/tasks/`:
+    - `tasks.types.ts`: Updated interfaces for `TaskAssigneeSummary` and multi-assignee task.
+    - `TaskFormDialog.tsx`: Multi-select checkbox list populated strictly from Deal Owner + Active Collaborators; locked read-only display in edit mode.
+    - `TaskCard.tsx`: Multi-assignee avatar group, individual completion status indicators, progress pill (`X / Y completed`), read-only immutable assignee presentation.
+  - `backend/src/__tests__/tasks.test.ts`: Comprehensive integration test suite (20 tests) verifying multi-assignee creation, strictly deal-scoped boundaries, manager boundary enforcement, mixed valid/invalid atomic rejection, immutability, individual completions, notifications, dual perspectives, filtering, and exact-ID cleanup.
+  - `docs/schema.md`, `docs/architecture.md`, `docs/decisions.md`, `docs/plan.md`: Fully documented schema, architecture, Decision 32, and Phase 15.
+
+- **Human review / testing**:
+  - Backend and frontend typechecks passing (`tsc --noEmit`).
+  - Frontend production build passing (`npm run build`).
+  - Full Vitest suite and baseline database integrity verified.
+
+- **Final outcome**:
+  Multi-Assignee Deal Tasks with Creation-Time Immutable Assignment and strictly deal-scoped security fully implemented, verified, and documented.

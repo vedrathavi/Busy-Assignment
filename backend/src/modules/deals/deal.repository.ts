@@ -455,7 +455,7 @@ export class DealRepository {
 
           // Keep notification recipient aligned with new deal owner
           const existingAlert = await tx.dealAlert.findUnique({
-            where: { id },
+            where: { dealId: id },
             select: { notificationId: true },
           });
           if (existingAlert) {
@@ -563,7 +563,7 @@ export class DealRepository {
       await notificationRepository.createActivityNotifications(tx, notifications);
 
       return mapDealToResponse(updatedDeal);
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
@@ -611,7 +611,7 @@ export class DealRepository {
       await notificationRepository.createActivityNotifications(tx, notifications);
 
       return mapDealToResponse(updatedDeal);
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
@@ -708,7 +708,7 @@ export class DealRepository {
       await notificationRepository.createActivityNotifications(tx, notifications);
 
       return collaborator;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
@@ -753,7 +753,7 @@ export class DealRepository {
         recipientUserIds,
       });
       await notificationRepository.createActivityNotifications(tx, notifications);
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
@@ -790,7 +790,7 @@ export class DealRepository {
       await notificationRepository.createActivityNotifications(tx, notifications);
 
       return history;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
@@ -861,7 +861,7 @@ export class DealRepository {
       await notificationRepository.createActivityNotifications(tx, notifications);
 
       return mapDealToResponse(updatedDeal);
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 
   /**
