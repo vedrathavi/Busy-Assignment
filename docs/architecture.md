@@ -10,43 +10,49 @@ The system is designed as a **feature-based modular architecture with layered se
 
 ```mermaid
 graph TD
-    subgraph Client ["Client Tier (Browser / Vercel)"]
+    subgraph Client ["Client Tier (Browser / Vercel: https://busy-crm.vercel.app)"]
         UI["React 18 + TypeScript SPA"]
-        RQ["TanStack Query (Server Cache)"]
-        Router["React Router v7"]
+        RQ["TanStack Query (Server State Cache)"]
+        Router["React Router v7 (SPA Rewrites)"]
+        ZS["Zustand (Client UI State)"]
         UI --> RQ
         UI --> Router
+        UI --> ZS
     end
 
-    subgraph Server ["Authoritative Application Tier (Node.js / Express / Render)"]
-        API["Express REST API (Port 5000)"]
-        MW["Cross-Cutting Middleware (Auth, CORS, Zod, Error Handler)"]
+    subgraph Server ["Authoritative Application Tier (Render: https://busy-backend-za64.onrender.com)"]
+        API["Express REST API"]
+        MW["Cross-Cutting Middleware (Auth JWT, CORS, Zod, ErrorHandler)"]
         
         subgraph Modules ["Feature Modules"]
             AuthMod["auth"]
-            UsersMod["users"]
+            UsersMod["users (Team Directory & Selection)"]
             CompMod["companies"]
-            DealsMod["deals"]
-            DashMod["dashboard"]
-            AlertsMod["alerts"]
+            DealsMod["deals (State Machine & History)"]
+            DashMod["dashboard (Aggregations)"]
+            AlertsMod["alerts (Past-Due Engine)"]
         end
         
         API --> MW
         MW --> Modules
     end
 
-    subgraph Persistence ["Persistence Tier (Supabase)"]
+    subgraph Persistence ["Persistence Tier (Supabase PostgreSQL Cloud)"]
         Prisma["Prisma ORM Client (v6)"]
-        DB[(PostgreSQL Database)]
+        Pooler["Supabase Transaction Pooler (Port 6543)"]
+        DirectConn["Direct Session Conn (Port 5432 Migrations)"]
+        DB[("PostgreSQL 15+ Database")]
         Modules --> Prisma
-        Prisma --> DB
+        Prisma --> Pooler
+        Pooler --> DB
+        DirectConn --> DB
     end
 ```
 
 ### Component Placement & Execution Environments
-- **Frontend SPA**: Runs in the end-user's web browser, served statically via **Vercel** (or local Vite server at `http://localhost:5173`).
-- **Backend REST API**: Runs as a long-lived Node.js service hosted on **Render** (or locally at `http://localhost:5000`). It is the authoritative security, authorization, and business-rule boundary.
-- **Database**: Managed PostgreSQL instance hosted on **Supabase** (Tokyo region `aws-0-ap-northeast-1`), utilizing transaction pooling (port `6543`) for application queries and session pooling (port `5432`) for schema migrations.
+- **Frontend SPA**: Runs in the end-user's web browser, served statically via **Vercel** ([https://busy-crm.vercel.app](https://busy-crm.vercel.app)) with client-side SPA rewrites via `vercel.json` (or local Vite server at `http://localhost:5173`).
+- **Backend REST API**: Runs as a long-lived Node.js service hosted on **Render** ([https://busy-backend-za64.onrender.com](https://busy-backend-za64.onrender.com)) (or locally at `http://localhost:5000`). It is the authoritative security, authorization, and business-rule boundary. Exposes `GET /api/health` for uptime monitoring.
+- **Database**: Managed PostgreSQL instance hosted on **Supabase**, utilizing transaction pooling (port `6543`, `?pgbouncer=true`) for application queries and session pooling (port `5432`) for schema migrations.
 
 ---
 
@@ -331,6 +337,10 @@ At 100x data volume (~100,000+ deals, ~1,000,000+ history events), the system ma
 - **Profile / Context Resolution (`GET /api/auth/me`)**:
   - Validates JWT signature and expiration.
   - Resolves authoritative user profile and role (`MANAGER` vs `SALES_REP`) from the database on every authenticated request.
+- **Cross-Domain Token Architecture (Vercel &harr; Render)**:
+  - Tokens are transmitted via the `Authorization: Bearer <token>` header, not ambient cookies.
+  - This eliminates cross-site third-party cookie blocking issues between `https://busy-crm.vercel.app` and `https://busy-backend-za64.onrender.com`.
+  - CORS middleware on the backend validates the origin against `FRONTEND_URL` while supporting strict origin verification.
 
 ### Enterprise Provisioning Model vs. Public Sign-Up
 To enforce single-tenant organization security, data isolation, and prevent unauthorized role escalation:
