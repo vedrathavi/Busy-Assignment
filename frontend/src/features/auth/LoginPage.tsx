@@ -48,6 +48,15 @@ export function LoginPage() {
     setMode(location.pathname === '/signup' ? 'signup' : 'signin');
   }, [location.pathname]);
 
+  // Restore remembered email from localStorage on initial load
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('crm_remembered_email');
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
+  }, []);
+
   // Target path after login
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/dashboard';
 
@@ -70,6 +79,12 @@ export function LoginPage() {
 
     setError(null);
     setIsSubmitting(true);
+
+    if (rememberMe) {
+      localStorage.setItem('crm_remembered_email', email.trim());
+    } else {
+      localStorage.removeItem('crm_remembered_email');
+    }
 
     try {
       await login({ email: email.trim(), password });

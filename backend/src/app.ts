@@ -12,11 +12,38 @@ import { userRouter } from './modules/users/user.routes';
 export function createApp(): Application {
   const app = express();
 
-  // Core Middleware
+  // Core Middleware - CORS with explicit production & local development support
+  const configuredOrigins = env.FRONTEND_URL.split(',').map((url) => url.trim());
   app.use(
     cors({
-      origin: env.FRONTEND_URL,
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, curl, Postman, Render health checks)
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        // 1. Allow explicitly configured origins (from env.FRONTEND_URL)
+        if (configuredOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        // 2. Allow local development origins (http://localhost:5173, http://127.0.0.1:5173, etc.)
+        const isLocalOrigin = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+        if (isLocalOrigin) {
+          return callback(null, true);
+        }
+
+        // 3. Allow Vercel production & preview deployment origins
+        const isVercelOrigin = /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin);
+        if (isVercelOrigin) {
+          return callback(null, true);
+        }
+
+        return callback(new Error(`CORS origin '${origin}' not allowed by Access-Control-Allow-Origin policy`));
+      },
       credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
     })
   );
   app.use(express.json());

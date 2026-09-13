@@ -42,13 +42,12 @@ describe('Phase 4: Companies Module Integration Tests', { timeout: 30000 }, () =
   ];
 
   const resetCompanies = async () => {
-    // Clean up any dynamically created test companies
-    if (createdCompanyIds.length > 0) {
-      await prisma.company.deleteMany({
-        where: { id: { in: createdCompanyIds } },
-      });
-      createdCompanyIds.length = 0;
-    }
+    // Clean up any dynamically created test companies (including unseeded remnants)
+    const seededCompanyIds = Object.values(COMPANIES);
+    await prisma.company.deleteMany({
+      where: { id: { notIn: seededCompanyIds } },
+    });
+    createdCompanyIds.length = 0;
 
     // Clean up any dynamically created deals and their related records
     const seededDealIds = [
