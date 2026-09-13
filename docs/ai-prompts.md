@@ -39,6 +39,10 @@ Each significant entry records:
 | **Phase 13** (Prompt 18) | CRM Polish, Team Directory & Zero-UUID UX | Implement `/users` directory, `/users/:id` profile, `UserSelector`, Indian Rupee currency, `/trash` archive, and Lovable styling. |
 | **Phase 13 Correction** (Prompt 19) | Deal Lifecycle & Restore Correction Pass | Align pipeline with assignment state machine (`NEW → QUALIFIED → PROPOSAL → NEGOTIATION → WON/LOST`), mandatory lost reason, and loading circles on state transitions. |
 | **Phase 14** (Prompt 20) | Deal Owner-Collaborator Mutual Exclusion Invariant | Enforce server-side invariant that deal owner cannot be a collaborator, with atomic collaborator removal upon reassignment in single and bulk workflows. |
+| **Phase 15** (Prompt 21) | Deal & Company Ownership Creation Model | Enforce Manager explicit assignment of Sales Reps on creation and Rep automatic self-ownership across frontend and backend. |
+| **Phase 16** (Prompt 22) | Restrict Bulk Deal Operations UI to Managers | Remove bulk selection checkboxes and toolbar for Sales Reps and fix Vitest test transform cache. |
+| **Phase 17** (Prompt 23) | Split-Screen Auth & Enterprise Provisioning | Redesign 50-50 split-screen login/signup with 3D floating CRM dashboard preview and preserve enterprise provisioning model. |
+| **Phase 18** (Prompt 24) | Manager Bulk Advance UX & Toaster Feedback | Implement Sonner toaster-based feedback for Manager Bulk Advance, per-deal Negotiation blocker messages, duplicate submission prevention, and query invalidation. |
 
 ---
 
@@ -950,3 +954,35 @@ Each significant entry records:
   - `npx tsc --noEmit` & `npm run build` in both `backend/` and `frontend/`: 0 errors.
   - `git diff --check`: 0 errors.
 - **Final outcome**: High-polish, 50-50 split-screen authentication page with responsive mobile layout, realistic 3D floating CRM dashboard preview, and strictly preserved enterprise provisioning security model.
+
+---
+
+## 2026-09-13 - Prompt 24 - Phase 18: Frontend UX Fix for Manager Bulk Advance (Sonner Toaster Feedback & Partial Success Handling)
+
+- **Problem / Task**:
+  1. Fix the frontend UX for Manager → Bulk Advance when selected deals include deals already at the `NEGOTIATION` stage.
+  2. The backend correctly blocks advancing Negotiation deals automatically (`TRANSITION_REQUIRES_TARGET`) to avoid guessing Won/Lost, returning per-deal success/failure information.
+  3. Previously, the UI appeared to do nothing or showed an inaccurate success message.
+  4. Requirements mandated ONLY toaster-based feedback reusing the project's Sonner implementation, duplicate submission prevention, per-deal error reporting in toast description, separate unexpected network error handling, and TanStack Query invalidation preserving filters, sorting, and pagination.
+  5. Strictly preserve backend lifecycle rules, database schema, and existing data.
+- **User Intent**:
+  - Manager selects deals -> "Advancing N deals..." loading toast.
+  - All succeeded -> "N deals advanced successfully."
+  - Partial success -> "X deals advanced. Y deals could not be advanced." with description like "Deal ABC is already at Negotiation."
+  - None advanced -> "No deals were advanced." with description.
+  - Duplicate submissions prevented while running.
+  - Queries invalidated without full page reload and without losing filters/sort/page.
+- **What IDE / Code Assistant implemented**:
+  - `frontend/src/pages/DealsPage.tsx`:
+    - Imported `useQueryClient` and `Deal` type.
+    - Added `isBulkAdvancing` state and disabled floating toolbar buttons (`Bulk Advance`, `Reassign Owner`, `Clear Selection`) while pending.
+    - Added `dealsRef` mapping deal IDs to deal objects for title lookups.
+    - Updated `handleBulkAdvance` to emit `toast.loading`, parse authoritative `response.summary` and `response.results`, format failure reasons (specifically `"${dealTitle} is already at Negotiation."` for `TRANSITION_REQUIRES_TARGET`), update toasts in-place via `toastId` (`toast.success`, `toast.warning`, `toast.error`), clear selection, and invalidate `['deals']` and `['dashboard']` queries.
+    - Handled unexpected network/API errors separately in `catch (err)` with `toast.error("Bulk advance failed. Please try again.", { id: toastId })`.
+  - Updated `docs/decisions.md` (Decision 28) and `docs/ai-prompts.md`.
+- **Human review / testing**:
+  - `npx tsc --noEmit` in `frontend/`: 0 errors.
+  - `npm run build` in `frontend/`: Exited with code 0 (production build succeeded).
+  - `git diff --check`: 0 errors.
+  - Zero database changes or seed runs; existing test data preserved.
+- **Final outcome**: Polished, toaster-only feedback for Manager Bulk Advance clearly explaining Negotiation and lifecycle blockers while keeping the deals table seamlessly up-to-date.

@@ -33,6 +33,8 @@ import {
   useBulkAdvanceDeals,
   useBulkReassignDeals,
 } from '@/features/deals/useDeals';
+import { Deal } from '@/features/deals/deals.types';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCompanies } from '@/features/companies/useCompanies';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useUIStore } from '@/store/ui.store';
@@ -167,8 +169,17 @@ export function DealsPage() {
   );
 
   const { data, isLoading, isError, error, refetch, isFetching } = useDeals(queryParams);
+  const deals = data?.deals || [];
+  const queryClient = useQueryClient();
   const { data: companiesData } = useCompanies({ isArchived: 'false', limit: 100 });
   const companiesList = companiesData?.companies || [];
+
+  const dealsRef = React.useRef<Map<string, Deal>>(new Map());
+  useEffect(() => {
+    deals.forEach((deal) => {
+      dealsRef.current.set(deal.id, deal);
+    });
+  }, [deals]);
 
   const createDealMutation = useCreateDeal();
   const exportCsvMutation = useExportDealsCsv();
@@ -181,6 +192,7 @@ export function DealsPage() {
   const [bulkReassignOwnerId, setBulkReassignOwnerId] = useState('');
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [isBulkAdvancing, setIsBulkAdvancing] = useState(false);
 
   // Create form state
   const [dealTitle, setDealTitle] = useState('');
@@ -224,16 +236,73 @@ export function DealsPage() {
   };
 
   const handleBulkAdvance = async () => {
-    if (!isManager || selectedDealIds.length === 0) return;
+    if (!isManager || selectedDealIds.length === 0 || bulkAdvanceMutation.isPending || isBulkAdvancing) {
+      return;
+    }
+
+    setIsBulkAdvancing(true);
     setBulkError(null);
+
+    const count = selectedDealIds.length;
+    const toastId = toast.loading(`Advancing ${count} ${count === 1 ? 'deal' : 'deals'}...`);
+
     try {
-      await bulkAdvanceMutation.mutateAsync(selectedDealIds);
-      toast.success(`Successfully advanced ${selectedDealIds.length} deals`);
+      const response = await bulkAdvanceMutation.mutateAsync(selectedDealIds);
+      const succeeded = response.summary?.succeeded ?? response.results.filter((r) => r.status === 'success').length;
+      const failed = response.summary?.failed ?? response.results.filter((r) => r.status === 'failed').length;
+
+      const failedResults = response.results.filter((r) => r.status === 'failed');
+      const failureReasons = failedResults.map((item) => {
+        const deal = dealsRef.current.get(item.dealId) || deals.find((d) => d.id === item.dealId);
+        const dealTitle = deal?.title || `Deal ${item.dealId.slice(0, 8)}`;
+
+        if (item.reason === 'TRANSITION_REQUIRES_TARGET' || item.message?.includes('NEGOTIATION')) {
+          return `${dealTitle} is already at Negotiation.`;
+        }
+        if (item.reason === 'DEAL_CLOSED') {
+          return `${dealTitle} is already closed.`;
+        }
+        if (item.reason === 'DEAL_DELETED') {
+          return `${dealTitle}: Cannot advance a soft-deleted deal.`;
+        }
+        if (item.reason === 'DEAL_NOT_FOUND') {
+          return `${dealTitle}: Deal was not found.`;
+        }
+        return item.message ? `${dealTitle}: ${item.message}` : `${dealTitle}: Cannot advance deal stage.`;
+      });
+
+      const description = failureReasons.length > 0 ? failureReasons.join('\n') : undefined;
+
+      if (failed === 0) {
+        toast.success(`${succeeded} ${succeeded === 1 ? 'deal' : 'deals'} advanced successfully.`, {
+          id: toastId,
+        });
+      } else if (succeeded === 0) {
+        toast.error('No deals were advanced.', {
+          id: toastId,
+          description,
+          descriptionClassName: 'whitespace-pre-line',
+          duration: 5000,
+        });
+      } else {
+        toast.warning(
+          `${succeeded} ${succeeded === 1 ? 'deal' : 'deals'} advanced. ${failed} ${failed === 1 ? 'deal' : 'deals'} could not be advanced.`,
+          {
+            id: toastId,
+            description,
+            descriptionClassName: 'whitespace-pre-line',
+            duration: 5000,
+          }
+        );
+      }
+
       clearDealSelection();
+      await queryClient.invalidateQueries({ queryKey: ['deals'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Bulk advance failed';
-      setBulkError(msg);
-      toast.error(msg);
+      toast.error('Bulk advance failed. Please try again.', { id: toastId });
+    } finally {
+      setIsBulkAdvancing(false);
     }
   };
 
@@ -265,7 +334,6 @@ export function DealsPage() {
     return closeDate < today;
   };
 
-  const deals = data?.deals || [];
   const allSelected = deals.length > 0 && deals.every((d) => selectedDealIds.includes(d.id));
 
   const handleSelectAll = () => {
@@ -464,10 +532,10 @@ export function DealsPage() {
               variant="outline"
               size="sm"
               onClick={handleBulkAdvance}
-              disabled={bulkAdvanceMutation.isPending}
+              disabled={bulkAdvanceMutation.isPending || isBulkAdvancing}
               className="h-7 text-xs bg-[#fcfbf8] text-[#1c1c1c] hover:bg-[#eceae4] border-transparent gap-1.5"
             >
-              {bulkAdvanceMutation.isPending ? (
+              {bulkAdvanceMutation.isPending || isBulkAdvancing ? (
                 <>
                   <FiLoader className="h-3.5 w-3.5 animate-spin text-[#1c1c1c]" />
                   <span>Advancing Deals...</span>
@@ -489,6 +557,7 @@ export function DealsPage() {
                   setBulkError(null);
                   setIsBulkReassignOpen(true);
                 }}
+                disabled={bulkAdvanceMutation.isPending || isBulkAdvancing}
                 className="h-7 text-xs bg-[#fcfbf8] text-[#1c1c1c] hover:bg-[#eceae4] border-transparent"
               >
                 <FiUserCheck className="h-3.5 w-3.5 mr-1" />
@@ -500,6 +569,7 @@ export function DealsPage() {
               variant="ghost"
               size="sm"
               onClick={clearDealSelection}
+              disabled={bulkAdvanceMutation.isPending || isBulkAdvancing}
               className="h-7 text-xs text-[#fcfbf8] hover:bg-white/10"
             >
               <FiX className="h-3.5 w-3.5" />

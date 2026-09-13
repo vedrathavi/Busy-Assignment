@@ -525,3 +525,34 @@ This document records the major architectural, domain, and technology decisions 
   - Elevates first-impression visual polish while strictly protecting organization tenancy, database integrity, and server-authoritative role security.
 - **Trade-offs**:
   - Public visitors cannot self-create organizations or accounts unassisted; user creation remains an authenticated administrative action.
+
+---
+
+## Decision 28: Toast-Based UX for Manager Bulk Deal Stage Advancement & Authoritative Backend Transition Feedback
+
+- **Context / Problem**:
+  - In Manager Bulk Deal Stage Advancement (`POST /api/deals/bulk/advance`), the backend lifecycle behavior strictly enforces that deals in `NEGOTIATION` require an explicit target stage (`WON` or `LOST`); the backend does not guess Won/Lost and returns `TRANSITION_REQUIRES_TARGET` with per-deal success/failure details.
+  - Previously, the frontend UI displayed a generic `"Successfully advanced N deals"` toast regardless of whether deals actually moved, or appeared to do nothing when Negotiation deals failed to advance.
+  - Furthermore, duplicate submissions were possible while the bulk advance mutation was in-flight, and failures lacked clear per-deal feedback.
+- **Chose**:
+  1. **Strictly Toaster-Based Feedback via Sonner**:
+     - No new modal, dialog, popup, or result page was introduced.
+     - On action start: Dispatches a loading toast (`toast.loading("Advancing N deals...")`) and tracks `toastId`.
+     - Guards against duplicate clicks with `isBulkAdvancing` state and disables floating toolbar buttons (`Bulk Advance`, `Reassign Owner`, `Clear Selection`).
+  2. **Authoritative Backend Result Processing**:
+     - Uses `response.summary` (`succeeded`, `failed`) and `response.results` directly from the backend.
+     - Never guesses or hard-codes success/failure counts; honors backend partial-success semantics.
+     - Resolves human-readable deal titles using a cached deal lookup (`dealsRef`), cleanly presenting negotiation blockers as `"${dealTitle} is already at Negotiation."`.
+     - Supports other failures (`DEAL_CLOSED`, `DEAL_DELETED`, `DEAL_NOT_FOUND`, etc.).
+  3. **Multi-Outcome Toast Presentation**:
+     - **All Succeeded**: Updates `toastId` to `toast.success("${succeeded} deals advanced successfully.")`.
+     - **Partial Success**: Updates `toastId` to `toast.warning("${succeeded} deals advanced. ${failed} deals could not be advanced.")` with multi-line failure reasons in `description` (`whitespace-pre-line`).
+     - **None Advanced**: Updates `toastId` to `toast.error("No deals were advanced.")` with per-deal reasons in `description`.
+     - **Network / Unexpected API Errors**: Handled separately in `catch (err)` with `toast.error("Bulk advance failed. Please try again.")`, never claiming deals advanced when the request failed.
+  4. **Preserved Filtering, Sorting & Pagination**:
+     - Clears selection upon completion and invalidates TanStack Query caches (`['deals']` and `['dashboard']`).
+     - Re-fetches the active view with identical query parameters (search, stage, owner, company, sort, page) without full page reload.
+- **Why**:
+  - Provides instant, transparent feedback to sales managers when bulk operations encounter lifecycle boundaries (like Negotiation), strictly adhering to the backend's immutable state machine without cluttering the UI with dialogs.
+- **Trade-offs**:
+  - None. Preserves 100% backend lifecycle semantics and Sonner conventions.
