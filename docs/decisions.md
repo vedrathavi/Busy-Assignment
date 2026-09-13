@@ -556,3 +556,48 @@ This document records the major architectural, domain, and technology decisions 
   - Provides instant, transparent feedback to sales managers when bulk operations encounter lifecycle boundaries (like Negotiation), strictly adhering to the backend's immutable state machine without cluttering the UI with dialogs.
 - **Trade-offs**:
   - None. Preserves 100% backend lifecycle semantics and Sonner conventions.
+
+---
+
+## Decision 29: Deal Activity Notifications Architecture, Lightweight Polling Strategy & Invariant Preservation
+
+- **Context / Problem**:
+  - We needed to implement Phase 1 of the optional CRM addon: **Deal Activity Notifications** (in-app notifications for team members involved in deals) without compromising any of the 10 mandatory core requirements, without modifying existing deal lifecycle or authorization behavior, and without breaking Goal 10 Overdue DealAlerts.
+  - Furthermore, real-time push infrastructures like WebSockets, Server-Sent Events (SSE), Redis, or message brokers were explicitly prohibited.
+  - The notification polling mechanism had to be extremely lightweight: polling must NOT periodically re-fetch the full notification list every 30 seconds; it must only query unread count, pausing when the tab is backgrounded and invalidating the list cache only when the count changes or the user opens notifications.
+  - The development database contains manual CRM records that must remain intact (no reset, seed, truncate, or reinitialization).
+- **Chose**:
+  1. **Unified Schema Extension with Strict Separation**:
+     - Extended the Prisma `NotificationType` enum with all 10 activity notification types: `DEAL_CREATED`, `DEAL_STAGE_ADVANCED`, `DEAL_STAGE_REGRESSED`, `DEAL_WON`, `DEAL_LOST`, `DEAL_REOPENED`, `NOTE_ADDED`, `COLLABORATOR_ADDED`, `COLLABORATOR_REMOVED`, `OWNER_CHANGED`.
+     - Extended the `Notification` table with nullable `dealId`, `title`, and `message` fields, along with an indexed foreign key to `Deal` with `onDelete: Cascade`.
+     - Preserved Goal 10 Overdue DealAlerts: Goal 10 alerts continue to use `Notification` records with `type: DEAL_OVERDUE` linked 1:1 via `dealAlert` (Active vs Dismissed state). Activity notifications have `dealAlert: null` and operate with separate `readAt: null | DateTime` read status (Unread vs Read).
+     - Applied schema change non-destructively using `prisma db push` (zero data loss, no migrations reset or seeding).
+  2. **Server-Side Recipient Resolution Matrix**:
+     - Resolved recipients strictly on the backend within `resolveDealNotificationRecipients`:
+       - Deal owner receives notifications on changes made by others.
+       - Active collaborators receive notifications on changes made by others.
+       - Managers (who have team-wide CRM visibility) receive notifications.
+     - **Strict Exclusions**:
+       - The actor who performed the action is ALWAYS excluded (no self-notifications).
+       - Unrelated Sales Reps are NEVER notified.
+       - Removed collaborators do NOT receive removal notifications.
+       - Managers are NOT added as collaborators to deals.
+  3. **Transactional Event Creation**:
+     - Integrated notification dispatch directly inside the existing Prisma interactive transactions (`deal.repository.ts`) across deal creation, updates, stage advances/regressions/wins/losses, reopenings, notes, collaborators, and bulk operations.
+     - Bulk advance and bulk reassign generate notifications only for deals that succeed. Deals that fail (e.g. Negotiation deals in bulk advance) generate no notifications.
+  4. **Lightweight Polling Architecture via TanStack Query**:
+     - Header bell and notification hooks poll **only** `GET /api/notifications/count` at a 30-second interval (`refetchInterval: 30000`).
+     - `refetchIntervalInBackground: false` automatically pauses network polling when the user switches tabs or minimizes the window.
+     - `refetchOnWindowFocus: true` immediately refetches count on tab focus.
+     - The full notification list (`GET /api/notifications`) is **never** downloaded on a timer. The list query is only invalidated if `unreadCount` actually changes or upon user actions (mark as read).
+     - All query keys (`['notifications', 'count', user.id]`, `['notifications', 'list', user.id]`) are strictly scoped by user ID.
+  5. **Header Bell & Dual-Tab Notifications Page**:
+     - Replaced static alerts bell in `Header.tsx` with `NotificationBell`, providing a live unread badge combining unread activity and overdue alerts.
+     - Bell dropdown displays active overdue deals banner, quick mark-all-read action, and a preview of the latest 5 activity events with type-specific icons and relative timestamps.
+     - Upgraded `AlertsPage.tsx` to a unified Notifications & Alerts page with two distinct tabs:
+       - **Deal Activity**: Filterable by `All`, `Unread`, `Read`, with per-item mark-as-read and deal navigation links.
+       - **Overdue Deals**: 100% preserves Goal 10 overdue alerts, dismiss actions, days overdue calculation, and empty state.
+- **Why**:
+  - Provides a complete, responsive activity feed for collaborative deal closing while strictly adhering to lightweight polling, preserving database contents, and isolating activity notifications from overdue alerts.
+- **Trade-offs**:
+  - Updates appear within 30 seconds or on tab focus rather than sub-second WebSocket pushes, which avoids persistent server connections and keeps backend CPU/memory minimal.

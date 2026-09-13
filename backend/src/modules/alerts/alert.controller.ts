@@ -24,7 +24,9 @@ export class AlertController {
         throw new UnauthorizedError('Authentication required');
       }
 
-      const alerts = await this.service.getAlerts(req.user);
+      const rawStatus = req.query.status as string | undefined;
+      const status = rawStatus === 'dismissed' || rawStatus === 'all' ? rawStatus : 'active';
+      const alerts = await this.service.getAlerts(req.user, status);
 
       res.status(200).json({
         success: true,

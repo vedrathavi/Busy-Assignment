@@ -43,6 +43,16 @@ enum HistoryType {
 
 enum NotificationType {
   DEAL_OVERDUE
+  DEAL_CREATED
+  DEAL_STAGE_ADVANCED
+  DEAL_STAGE_REGRESSED
+  DEAL_WON
+  DEAL_LOST
+  DEAL_REOPENED
+  NOTE_ADDED
+  COLLABORATOR_ADDED
+  COLLABORATOR_REMOVED
+  OWNER_CHANGED
 }
 
 // --------------------------------------------------
@@ -141,6 +151,7 @@ model Deal {
   collaborators DealCollaborator[]
   history       DealHistory[]
   alert         DealAlert?
+  notifications Notification[]     @relation("DealNotifications")
 
   @@index([teamId, deletedAt])
   @@index([teamId, stage])
@@ -188,16 +199,21 @@ model DealHistory {
 model Notification {
   id        String           @id @default(uuid()) @db.Uuid
   userId    String           @db.Uuid
+  dealId    String?          @db.Uuid
   type      NotificationType
+  title     String?          @db.VarChar(255)
+  message   String?          @db.Text
   readAt    DateTime?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
   user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  deal      Deal?            @relation("DealNotifications", fields: [dealId], references: [id], onDelete: Cascade)
   dealAlert DealAlert?
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, readAt])
+  @@index([dealId])
 }
 
 model DealAlert {

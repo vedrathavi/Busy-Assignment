@@ -3,11 +3,11 @@ import { getAlertsApi, getAlertsCountApi, dismissAlertApi } from './alerts.api';
 import { AlertCountResponse, OverdueAlertItem } from './alerts.types';
 import { useAuth } from '@/features/auth/AuthContext';
 
-export function useAlerts() {
+export function useAlerts(status: 'all' | 'active' | 'dismissed' = 'active') {
   const { user } = useAuth();
   return useQuery<OverdueAlertItem[], Error>({
-    queryKey: ['alerts', user?.id],
-    queryFn: getAlertsApi,
+    queryKey: ['alerts', user?.id, status],
+    queryFn: () => getAlertsApi(status),
     staleTime: 15 * 1000,
     refetchInterval: 30 * 1000, // Poll every 30s
     enabled: Boolean(user?.id),

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   FiMenu,
   FiSearch,
@@ -7,15 +6,14 @@ import {
   FiUser,
   FiShield,
   FiZap,
-  FiBell,
   FiX,
 } from 'react-icons/fi';
 import { useAuth } from '@/features/auth/AuthContext';
-import { useAlertsCount } from '@/features/alerts/useAlerts';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { NavbarSearch } from './NavbarSearch';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +29,6 @@ interface HeaderProps {
 
 export function Header({ onMenuToggle }: HeaderProps) {
   const { user, isManager, logout } = useAuth();
-  const { data: alertsCount } = useAlertsCount();
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   const initials = user?.name
@@ -42,8 +39,6 @@ export function Header({ onMenuToggle }: HeaderProps) {
         .join('')
         .toUpperCase()
     : 'U';
-
-  const count = alertsCount?.count || 0;
 
   return (
     <header className="sticky top-0 z-30 shrink-0 flex flex-col w-full border-b border-[#eceae4] bg-[#f7f4ed]/95 backdrop-blur-md">
@@ -89,22 +84,8 @@ export function Header({ onMenuToggle }: HeaderProps) {
             {isMobileSearchOpen ? <FiX className="h-4 w-4" /> : <FiSearch className="h-4 w-4" />}
           </Button>
 
-          {/* Alerts Bell Notification link */}
-          <Link to="/alerts">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative h-8 w-8 rounded-full border border-[#eceae4] text-[#1c1c1c] hover:bg-[#eceae4] hover:border-[rgba(28,28,28,0.4)]"
-              aria-label="View overdue alerts"
-            >
-              <FiBell className="h-4 w-4" />
-              {count > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#1c1c1c] px-1 text-[0.5625rem] font-bold text-[#fcfbf8]">
-                  {count}
-                </span>
-              )}
-            </Button>
-          </Link>
+          {/* Notifications & Overdue Alerts Bell Dropdown */}
+          <NotificationBell />
 
           {user && (
             <Badge

@@ -986,3 +986,54 @@ Each significant entry records:
   - `git diff --check`: 0 errors.
   - Zero database changes or seed runs; existing test data preserved.
 - **Final outcome**: Polished, toaster-only feedback for Manager Bulk Advance clearly explaining Negotiation and lifecycle blockers while keeping the deals table seamlessly up-to-date.
+
+---
+
+## 2026-09-13 - Prompt 25 - Optional Addon: Deal Activity Notifications (Phase 1)
+
+- **Problem / Task**:
+  1. Implement Phase 1 of the optional CRM addon: **Deal Activity Notifications** (persistent in-app activity notifications for users involved in deals).
+  2. Maintain existing 10 mandatory core requirements, immutable `DealHistory`, and Goal 10 Overdue DealAlerts completely intact.
+  3. No WebSockets or SSE; use efficient HTTP short polling ONLY for notification counts.
+  4. Server-side recipient resolution: Deal owner, current collaborators, and Managers. Exclude actor who performed action; exclude unrelated Sales Reps; do not make Manager a collaborator.
+  5. Events tracked: `DEAL_CREATED`, `DEAL_STAGE_ADVANCED`, `DEAL_STAGE_REGRESSED`, `DEAL_WON`, `DEAL_LOST`, `DEAL_REOPENED`, `NOTE_ADDED`, `COLLABORATOR_ADDED`, `COLLABORATOR_REMOVED`, `OWNER_CHANGED`. Bulk operations generate individual events only for successful deals.
+  6. Polling behavior: Poll `GET /api/notifications/count` every 30 seconds while the tab is active. Pause in background. Refetch on tab focus. Compare `unreadCount` with previous value; invalidate notification list only when count changes. Never download full notification list on a timer.
+  7. Strict database safety: Never seed, reset, truncate, or wipe the development database; preserve manually modified CRM data.
+- **User Intent**:
+  - Server-side recipient resolution matrix strictly enforced in backend repository/helper.
+  - Unified `Notification` model extended with `dealId`, `title`, `message`, and enum types.
+  - Separate Activity Notification state (`readAt: null | DateTime`) from Overdue DealAlert state (`dealAlert.dismissedAt: null | DateTime`).
+  - NotificationBell in Header with combined live badge, dropdown menu, and mark-all-read.
+  - Unified Notifications & Alerts page with dual tabs ("Deal Activity" and "Overdue Deals").
+- **What IDE / Code Assistant implemented**:
+  - `backend/prisma/schema.prisma`:
+    - Extended `NotificationType` enum with 10 activity event types.
+    - Extended `Notification` model with nullable `dealId`, `title`, `message`, and `deal` relation.
+    - Applied changes non-destructively via `npx prisma db push`.
+  - `backend/src/modules/notifications/`:
+    - `notification.types.ts`: DTO interfaces and query params.
+    - `notification.helper.ts`: Pure `resolveDealNotificationRecipients` and `formatNotificationContent` logic.
+    - `notification.repository.ts`: Batch creation inside transactions, pagination, IDOR-protected read status mutations, unread counts.
+    - `notification.service.ts`: Error handling and business validation.
+    - `notification.controller.ts`: 4 REST endpoints (`GET /`, `GET /count`, `PATCH /:id/read`, `POST /mark-all-read`).
+    - `notification.routes.ts`: Router mounted at `/api/notifications` in `app.ts`.
+  - `backend/src/modules/deals/deal.repository.ts`:
+    - Wired activity notification creation into transactions across create, update, stage transition, reopen, collaborator add/remove, notes, and bulk operations.
+  - `backend/src/__tests__/notifications.test.ts`:
+    - 19 comprehensive Vitest integration tests covering all notification scenarios, actor exclusion, collaborator removal, bulk operations, IDOR protection, counts, filters, and transaction rollbacks.
+  - `frontend/src/features/notifications/`:
+    - `notifications.types.ts`, `notifications.api.ts`.
+    - `useNotifications.ts`: Lightweight 30s count polling with background pause, focus refetch, conditional list invalidation, mark-as-read mutations.
+    - `NotificationBell.tsx`: Interactive header bell dropdown with live badge and quick actions.
+  - `frontend/src/features/deals/useDeals.ts`:
+    - Added scoped `['notifications']` query invalidation to deal mutations.
+  - `frontend/src/pages/AlertsPage.tsx` & `frontend/src/routes/AppRoutes.tsx`:
+    - Unified Notifications & Alerts page with dual tabs for Activity Notifications and Goal 10 Overdue Deals. Added `/notifications` route.
+  - `docs/decisions.md` (Decision 29), `docs/architecture.md` (Section 9).
+- **Human review / testing**:
+  - `npx vitest run src/__tests__/notifications.test.ts`: 19/19 tests passed (**100%**).
+  - `npx tsc --noEmit` in `backend/`: 0 errors.
+  - `npx tsc --noEmit` in `frontend/`: 0 errors.
+  - `npm run build` in `frontend/`: Exited with code 0 (bundle built successfully).
+  - Zero database resets or seeds performed; existing dev data completely preserved.
+- **Final outcome**: Seamless, high-performance Deal Activity Notifications addon fully integrated and verified without altering existing business logic or Goal 10 Overdue alerts.

@@ -30,10 +30,13 @@ export class AlertRepository {
   }
 
   /**
-   * Retrieves active overdue alerts dynamically based on user visibility.
+   * Retrieves overdue alerts dynamically based on user visibility and dismissal status.
    * Zero database writes on GET (purely read-oriented).
    */
-  public async getOverdueAlerts(user: AuthUser): Promise<OverdueAlertItem[]> {
+  public async getOverdueAlerts(
+    user: AuthUser,
+    status: 'active' | 'dismissed' | 'all' = 'active'
+  ): Promise<OverdueAlertItem[]> {
     const todayUtc = this.getTodayUtc();
     const visibilityFilter = this.dealRepository.buildVisibilityFilter(user, false);
 
@@ -69,21 +72,31 @@ export class AlertRepository {
       ],
     });
 
-    // Filter out alerts where dismissal matches the current expectedCloseDate
-    const activeOverdueDeals = deals.filter((deal) => {
-      if (!deal.alert || !deal.alert.dismissedCloseDate) {
-        return true;
+    // Filter deals based on dismissal status
+    const filteredDeals = deals.filter((deal) => {
+      const isDismissed = Boolean(
+        deal.alert?.dismissedCloseDate &&
+        formatDate(deal.alert.dismissedCloseDate) === formatDate(deal.expectedCloseDate)
+      );
+
+      if (status === 'active') {
+        return !isDismissed;
       }
-      const dismissedDateStr = formatDate(deal.alert.dismissedCloseDate);
-      const expectedCloseDateStr = formatDate(deal.expectedCloseDate);
-      return dismissedDateStr !== expectedCloseDateStr;
+      if (status === 'dismissed') {
+        return isDismissed;
+      }
+      return true; // 'all'
     });
 
-    return activeOverdueDeals.map((deal) => {
+    return filteredDeals.map((deal) => {
       const expectedCloseDateStr = formatDate(deal.expectedCloseDate);
       const valDecimal = deal.value instanceof Prisma.Decimal
         ? deal.value
         : new Prisma.Decimal(String(deal.value));
+      const isDismissed = Boolean(
+        deal.alert?.dismissedCloseDate &&
+        formatDate(deal.alert.dismissedCloseDate) === expectedCloseDateStr
+      );
 
       return {
         id: deal.alert?.notificationId ?? deal.id,
@@ -103,6 +116,8 @@ export class AlertRepository {
         stage: deal.stage,
         value: valDecimal.toFixed(2),
         type: NotificationType.DEAL_OVERDUE,
+        isDismissed,
+        dismissedAt: deal.alert?.dismissedAt ? deal.alert.dismissedAt.toISOString() : null,
         readAt: deal.alert?.notification?.readAt
           ? deal.alert.notification.readAt.toISOString()
           : null,
@@ -114,14 +129,18 @@ export class AlertRepository {
   }
 
   /**
-   * Retrieves overdue alert counts (total and unread).
+   * Retrieves overdue alert counts (active, total, dismissed, unread).
    */
   public async getOverdueAlertsCount(user: AuthUser): Promise<AlertCountResponse> {
-    const alerts = await this.getOverdueAlerts(user);
-    const unreadCount = alerts.filter((a) => a.readAt === null).length;
+    const allAlerts = await this.getOverdueAlerts(user, 'all');
+    const activeAlerts = allAlerts.filter((a) => !a.isDismissed);
+    const dismissedAlerts = allAlerts.filter((a) => a.isDismissed);
+    const unreadCount = activeAlerts.filter((a) => a.readAt === null).length;
     return {
-      count: alerts.length,
+      count: activeAlerts.length,
       unreadCount,
+      totalCount: allAlerts.length,
+      dismissedCount: dismissedAlerts.length,
     };
   }
 

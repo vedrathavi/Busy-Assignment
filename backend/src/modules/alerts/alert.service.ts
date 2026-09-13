@@ -12,11 +12,14 @@ export class AlertService {
   constructor(private alertRepo: AlertRepository = alertRepository) {}
 
   /**
-   * Retrieves active overdue alerts for the authenticated user.
+   * Retrieves overdue alerts for the authenticated user by dismissal status.
    * - Purely read-oriented (zero database mutations).
    */
-  public async getAlerts(user: AuthUser): Promise<OverdueAlertItem[]> {
-    return this.alertRepo.getOverdueAlerts(user);
+  public async getAlerts(
+    user: AuthUser,
+    status: 'active' | 'dismissed' | 'all' = 'active'
+  ): Promise<OverdueAlertItem[]> {
+    return this.alertRepo.getOverdueAlerts(user, status);
   }
 
   /**

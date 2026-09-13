@@ -18,6 +18,8 @@ export interface OverdueAlertItem {
   stage: DealStage;
   value: string;
   type: NotificationType;
+  isDismissed?: boolean;
+  dismissedAt?: string | null;
   readAt: string | null;
   createdAt: string;
 }
@@ -25,6 +27,8 @@ export interface OverdueAlertItem {
 export interface AlertCountResponse {
   count: number;
   unreadCount: number;
+  totalCount?: number;
+  dismissedCount?: number;
 }
 
 export interface DismissAlertResponse {

@@ -352,3 +352,62 @@ To enforce single-tenant organization security, data isolation, and prevent unau
 3. **Public Sign-Up View Behavior**:
    - The Sign-Up tab on `/signup` provides enterprise access instructions explaining account provisioning.
    - It guides issued users to sign in with their credentials or contact their team manager for onboarding.
+
+---
+
+## 9. Deal Activity Notifications Architecture (Optional Addon Phase 1)
+
+### Overview
+Phase 1 of the optional CRM addon introduces persistent in-app activity notifications for users involved in deals, keeping teams synchronized on deal momentum without disrupting existing core invariants, immutable audit histories, or Goal 10 Overdue DealAlerts.
+
+### Schema & Data Model
+- **Unified Notification Table**:
+  - `Notification` acts as the single storage engine for both Activity Notifications and Overdue DealAlerts.
+  - Fields added: `dealId: string?` (FK with cascade delete on deal purge), `title: string?`, `message: string?`.
+  - `NotificationType` enum extended with all 10 activity types:
+    `DEAL_CREATED`, `DEAL_STAGE_ADVANCED`, `DEAL_STAGE_REGRESSED`, `DEAL_WON`, `DEAL_LOST`, `DEAL_REOPENED`, `NOTE_ADDED`, `COLLABORATOR_ADDED`, `COLLABORATOR_REMOVED`, `OWNER_CHANGED`.
+- **Clean Invariant Separation (Activity vs. Overdue Alerts)**:
+  - **Goal 10 Overdue DealAlerts**: Stored with `type: DEAL_OVERDUE` and linked 1:1 via `dealAlert` relation. Life-cycle status is `Active` vs `Dismissed` (`dealAlert.dismissedAt != null`).
+  - **Activity Notifications**: Stored with `dealAlert: null`. Life-cycle status is `Unread` vs `Read` (`readAt != null`).
+  - Neither feature bleeds into the other; queries for alerts filter by `dealAlert != null`, and activity notification queries filter by `type != DEAL_OVERDUE`.
+
+### Recipient Resolution & Visibility Rules
+Recipient resolution is executed strictly server-side inside `notification.helper.ts`:
+- **Recipients**:
+  1. **Deal Owner**: Notified of updates performed by other users.
+  2. **Active Collaborators**: Notified of updates performed by other users.
+  3. **Managers**: Notified of all team deal events given team-wide CRM oversight.
+- **Strict Exclusions**:
+  1. **Actor Exclusion**: The user performing the action is never notified of their own action (no self-notifications).
+  2. **Unrelated Reps**: Reps not owning or collaborating on the deal receive zero notifications.
+  3. **Removed Collaborators**: When a collaborator is removed (`COLLABORATOR_REMOVED`), the removed collaborator does not receive the removal notification.
+  4. **No Role Mutation**: Managers receiving notifications are not added as collaborators.
+
+### Events Matrix
+
+| Event Type | Trigger | Recipients |
+| :--- | :--- | :--- |
+| `DEAL_CREATED` | Deal creation | Managers (and owner if created on their behalf) |
+| `DEAL_STAGE_ADVANCED` | Deal stage advanced 1 step forward (single or bulk) | Owner, Collaborators, Managers (minus actor) |
+| `DEAL_STAGE_REGRESSED` | Deal moved backward with reason | Owner, Collaborators, Managers (minus actor) |
+| `DEAL_WON` | Deal transitioned to Won | Owner, Collaborators, Managers (minus actor) |
+| `DEAL_LOST` | Deal transitioned to Lost | Owner, Collaborators, Managers (minus actor) |
+| `DEAL_REOPENED` | Manager reopens closed deal | Owner, Collaborators, Managers (minus actor) |
+| `NOTE_ADDED` | Note appended to deal | Owner, Collaborators, Managers (minus actor) |
+| `COLLABORATOR_ADDED` | New collaborator added | Added collaborator, Owner, other Collaborators, Managers (minus actor) |
+| `COLLABORATOR_REMOVED` | Collaborator removed | Owner, remaining Collaborators, Managers (minus actor, minus removed rep) |
+| `OWNER_CHANGED` | Manager reassigns owner (single or bulk) | New Owner, Collaborators, Managers (minus actor) |
+
+### Lightweight HTTP Polling Strategy
+To eliminate server load without complex persistent connection brokers:
+- **No WebSockets or SSE**: Strictly HTTP REST over standard port.
+- **Count-Only Periodic Polling**:
+  - The client polls **only** `GET /api/notifications/count` every 30 seconds (`refetchInterval: 30000`).
+  - `refetchIntervalInBackground: false` automatically pauses network polling when the browser tab is hidden or minimized.
+  - `refetchOnWindowFocus: true` automatically refetches count on tab focus.
+- **Conditional List Re-fetching**:
+  - The full notification list (`GET /api/notifications`) is **never** downloaded on a timer.
+  - The list is only re-fetched if `unreadCount` changes from its previous value or when explicitly opened/invalidated by user action.
+- **Scoped Invalidation**:
+  - Invalidation queries are strictly scoped by user ID: `['notifications', 'count', user.id]` and `['notifications', 'list', user.id]`.
+  - Deal mutations in the frontend invalidate `['notifications']` queries so the active user's view updates immediately.

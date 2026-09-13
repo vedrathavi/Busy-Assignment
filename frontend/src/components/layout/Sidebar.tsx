@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   FiGrid,
   FiGlobe,
@@ -13,6 +13,7 @@ import {
 } from 'react-icons/fi';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useAlertsCount } from '@/features/alerts/useAlerts';
+import { useNotificationCount } from '@/features/notifications/useNotifications';
 import { useUIStore } from '@/store/ui.store';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +47,7 @@ export const navigationItems: NavItem[] = [
     icon: FiUsers,
   },
   {
-    title: 'Alerts',
+    title: 'Activity & Alerts',
     href: '/alerts',
     icon: FiBell,
   },
@@ -65,7 +66,9 @@ interface SidebarProps {
 
 export function Sidebar({ className, onNavigate, forceExpanded = false }: SidebarProps) {
   const { user, isManager } = useAuth();
+  const location = useLocation();
   const { data: alertsCount } = useAlertsCount();
+  const { data: notifCount } = useNotificationCount();
   const { isSidebarCollapsed, toggleSidebar } = useUIStore();
 
   const isCollapsed = forceExpanded ? false : isSidebarCollapsed;
@@ -79,7 +82,7 @@ export function Sidebar({ className, onNavigate, forceExpanded = false }: Sideba
         .toUpperCase()
     : 'U';
 
-  const count = alertsCount?.count || 0;
+  const count = (alertsCount?.count || 0) + (notifCount?.unreadCount || 0);
 
   return (
     <aside
@@ -138,7 +141,10 @@ export function Sidebar({ className, onNavigate, forceExpanded = false }: Sideba
         <nav className="space-y-1">
           {navigationItems.map((item) => {
             const Icon = item.icon;
-            const isAlertItem = item.href === '/alerts';
+            const isAlertItem = item.href === '/alerts' || item.href === '/notifications';
+            const isItemActive = isAlertItem
+              ? location.pathname === '/alerts' || location.pathname === '/notifications'
+              : location.pathname.startsWith(item.href);
 
             return (
               <NavLink
@@ -146,44 +152,38 @@ export function Sidebar({ className, onNavigate, forceExpanded = false }: Sideba
                 to={item.href}
                 onClick={onNavigate}
                 title={isCollapsed ? item.title : undefined}
-                className={({ isActive }) =>
-                  cn(
-                    'group flex items-center rounded-[6px] text-xs transition-all duration-150',
-                    isCollapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2',
-                    isActive
-                      ? 'bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset font-medium'
-                      : 'text-[#1c1c1c] hover:bg-[rgba(28,28,28,0.04)] active:opacity-80'
-                  )
-                }
+                className={cn(
+                  'group flex items-center rounded-[6px] text-xs transition-all duration-150',
+                  isCollapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2',
+                  isItemActive
+                    ? 'bg-[#1c1c1c] text-[#fcfbf8] shadow-button-inset font-medium'
+                    : 'text-[#1c1c1c] hover:bg-[rgba(28,28,28,0.04)] active:opacity-80'
+                )}
               >
-                {({ isActive }) => (
-                  <>
-                    <div className={cn('flex items-center min-w-0', isCollapsed ? 'justify-center' : 'gap-3')}>
-                      <Icon
-                        className={cn(
-                          'h-4 w-4 shrink-0 transition-colors',
-                          isActive
-                            ? 'text-[#fcfbf8]'
-                            : 'text-[#5f5f5d] group-hover:text-[#1c1c1c]'
-                        )}
-                      />
-                      {!isCollapsed && <span className="truncate">{item.title}</span>}
-                    </div>
-
-                    {isAlertItem && count > 0 && (
-                      <span
-                        className={cn(
-                          'flex items-center justify-center font-bold transition-colors',
-                          isCollapsed
-                            ? 'absolute top-1 right-1 h-2 w-2 rounded-full bg-rose-600'
-                            : 'ml-auto h-5 min-w-5 rounded-full px-1.5 text-[10px]',
-                          !isCollapsed && (isActive ? 'bg-[#fcfbf8] text-[#1c1c1c]' : 'bg-[#1c1c1c] text-[#fcfbf8]')
-                        )}
-                      >
-                        {!isCollapsed && count}
-                      </span>
+                <div className={cn('flex items-center min-w-0', isCollapsed ? 'justify-center' : 'gap-3')}>
+                  <Icon
+                    className={cn(
+                      'h-4 w-4 shrink-0 transition-colors',
+                      isItemActive
+                        ? 'text-[#fcfbf8]'
+                        : 'text-[#5f5f5d] group-hover:text-[#1c1c1c]'
                     )}
-                  </>
+                  />
+                  {!isCollapsed && <span className="truncate">{item.title}</span>}
+                </div>
+
+                {isAlertItem && count > 0 && (
+                  <span
+                    className={cn(
+                      'flex items-center justify-center font-bold transition-colors',
+                      isCollapsed
+                        ? 'absolute top-1 right-1 h-2 w-2 rounded-full bg-rose-600'
+                        : 'ml-auto h-5 min-w-5 rounded-full px-1.5 text-[10px]',
+                      !isCollapsed && (isItemActive ? 'bg-[#fcfbf8] text-[#1c1c1c]' : 'bg-[#1c1c1c] text-[#fcfbf8]')
+                    )}
+                  >
+                    {!isCollapsed && count}
+                  </span>
                 )}
               </NavLink>
             );

@@ -53,6 +53,7 @@ export function AppRoutes() {
         <Route path="/users" element={<UsersPage />} />
         <Route path="/users/:id" element={<UserDetailPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
+        <Route path="/notifications" element={<AlertsPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

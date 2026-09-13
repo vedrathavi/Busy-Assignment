@@ -1,8 +1,10 @@
 import { apiClient, ApiResponse } from '@/lib/api/client';
 import { AlertCountResponse, DismissAlertResponse, OverdueAlertItem } from './alerts.types';
 
-export async function getAlertsApi(): Promise<OverdueAlertItem[]> {
-  const response = await apiClient.get<ApiResponse<OverdueAlertItem[]>>('/alerts');
+export async function getAlertsApi(status: 'all' | 'active' | 'dismissed' = 'active'): Promise<OverdueAlertItem[]> {
+  const response = await apiClient.get<ApiResponse<OverdueAlertItem[]>>('/alerts', {
+    params: status !== 'active' ? { status } : undefined,
+  });
   return response.data.data || [];
 }
 

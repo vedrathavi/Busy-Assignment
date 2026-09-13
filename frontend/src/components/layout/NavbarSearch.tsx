@@ -99,8 +99,8 @@ export function NavbarSearch() {
     {
       id: 'nav-alerts',
       type: 'nav',
-      title: 'Go to Overdue Alerts',
-      subtitle: 'Review deals needing immediate attention',
+      title: 'Go to Activity & Alerts',
+      subtitle: 'Review team activity and overdue deals',
       icon: FiBell,
       path: '/alerts',
     },

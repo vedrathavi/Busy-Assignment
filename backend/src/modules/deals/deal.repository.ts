@@ -1,6 +1,11 @@
-import { DealStage, HistoryType, Prisma, UserRole } from '@prisma/client';
+import { DealStage, HistoryType, NotificationType, Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../../database/prisma';
 import { AuthUser } from '../auth/auth.types';
+import { notificationRepository } from '../notifications/notification.repository';
+import {
+  buildPersonalizedNotifications,
+  resolveDealNotificationRecipients,
+} from '../notifications/notification.helper';
 import {
   CollaboratorResponse,
   CreateDealInput,
@@ -207,6 +212,23 @@ export class DealRepository {
           type: HistoryType.CREATED,
         },
       });
+
+      // Activity Notification: DEAL_CREATED
+      const { recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+        dealId: deal.id,
+        teamId: data.teamId,
+        actorId,
+        ownerId: data.ownerId,
+      });
+      const notifications = await buildPersonalizedNotifications(tx, {
+        dealId: deal.id,
+        dealTitle: deal.title,
+        type: NotificationType.DEAL_CREATED,
+        actorId,
+        ownerId: data.ownerId,
+        recipientUserIds,
+      });
+      await notificationRepository.createActivityNotifications(tx, notifications);
 
       return mapDealToResponse(deal);
     });
@@ -433,7 +455,7 @@ export class DealRepository {
 
           // Keep notification recipient aligned with new deal owner
           const existingAlert = await tx.dealAlert.findUnique({
-            where: { dealId: id },
+            where: { id },
             select: { notificationId: true },
           });
           if (existingAlert) {
@@ -442,6 +464,22 @@ export class DealRepository {
               data: { userId: data.ownerId },
             });
           }
+
+          // Activity Notification: OWNER_CHANGED
+          const { dealTitle, recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+            dealId: id,
+            actorId,
+            ownerId: data.ownerId,
+          });
+          const notifications = await buildPersonalizedNotifications(tx, {
+            dealId: id,
+            dealTitle,
+            type: NotificationType.OWNER_CHANGED,
+            actorId,
+            targetUserId: data.ownerId,
+            recipientUserIds,
+          });
+          await notificationRepository.createActivityNotifications(tx, notifications);
 
           return mapDealToResponse(updatedDeal);
         }
@@ -493,6 +531,37 @@ export class DealRepository {
         },
       });
 
+      // Activity Notification: Stage advance / regress / won / lost
+      let notificationType: NotificationType;
+      if (targetStage === DealStage.WON) {
+        notificationType = NotificationType.DEAL_WON;
+      } else if (targetStage === DealStage.LOST) {
+        notificationType = NotificationType.DEAL_LOST;
+      } else if (
+        (currentStage === DealStage.QUALIFIED && targetStage === DealStage.NEW) ||
+        (currentStage === DealStage.PROPOSAL && targetStage === DealStage.QUALIFIED) ||
+        (currentStage === DealStage.NEGOTIATION && targetStage === DealStage.PROPOSAL)
+      ) {
+        notificationType = NotificationType.DEAL_STAGE_REGRESSED;
+      } else {
+        notificationType = NotificationType.DEAL_STAGE_ADVANCED;
+      }
+
+      const { recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+        dealId: id,
+        actorId,
+      });
+      const notifications = await buildPersonalizedNotifications(tx, {
+        dealId: id,
+        dealTitle: updatedDeal.title,
+        type: notificationType,
+        actorId,
+        targetStage,
+        reason,
+        recipientUserIds,
+      });
+      await notificationRepository.createActivityNotifications(tx, notifications);
+
       return mapDealToResponse(updatedDeal);
     });
   }
@@ -525,6 +594,21 @@ export class DealRepository {
           newStage: targetStage,
         },
       });
+
+      // Activity Notification: DEAL_REOPENED
+      const { recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+        dealId: id,
+        actorId,
+      });
+      const notifications = await buildPersonalizedNotifications(tx, {
+        dealId: id,
+        dealTitle: updatedDeal.title,
+        type: NotificationType.DEAL_REOPENED,
+        actorId,
+        targetStage: updatedDeal.stage,
+        recipientUserIds,
+      });
+      await notificationRepository.createActivityNotifications(tx, notifications);
 
       return mapDealToResponse(updatedDeal);
     });
@@ -607,6 +691,22 @@ export class DealRepository {
         },
       });
 
+      // Activity Notification: COLLABORATOR_ADDED
+      const { dealTitle, recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+        dealId,
+        actorId,
+        additionalRecipientIds: [collaboratorId],
+      });
+      const notifications = await buildPersonalizedNotifications(tx, {
+        dealId,
+        dealTitle,
+        type: NotificationType.COLLABORATOR_ADDED,
+        actorId,
+        targetUserId: collaboratorId,
+        recipientUserIds,
+      });
+      await notificationRepository.createActivityNotifications(tx, notifications);
+
       return collaborator;
     });
   }
@@ -637,6 +737,22 @@ export class DealRepository {
           type: HistoryType.COLLABORATOR_REMOVED,
         },
       });
+
+      // Activity Notification: COLLABORATOR_REMOVED
+      const { dealTitle, recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+        dealId,
+        actorId,
+        excludedRecipientIds: [collaboratorId],
+      });
+      const notifications = await buildPersonalizedNotifications(tx, {
+        dealId,
+        dealTitle,
+        type: NotificationType.COLLABORATOR_REMOVED,
+        actorId,
+        targetUserId: collaboratorId,
+        recipientUserIds,
+      });
+      await notificationRepository.createActivityNotifications(tx, notifications);
     });
   }
 
@@ -658,6 +774,20 @@ export class DealRepository {
         },
         select: dealHistorySelect,
       });
+
+      // Activity Notification: NOTE_ADDED
+      const { dealTitle, recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+        dealId,
+        actorId,
+      });
+      const notifications = await buildPersonalizedNotifications(tx, {
+        dealId,
+        dealTitle,
+        type: NotificationType.NOTE_ADDED,
+        actorId,
+        recipientUserIds,
+      });
+      await notificationRepository.createActivityNotifications(tx, notifications);
 
       return history;
     });
@@ -713,6 +843,22 @@ export class DealRepository {
           data: { userId: newOwnerId },
         });
       }
+
+      // Activity Notification: OWNER_CHANGED
+      const { dealTitle, recipientUserIds } = await resolveDealNotificationRecipients(tx, {
+        dealId,
+        actorId,
+        ownerId: newOwnerId,
+      });
+      const notifications = await buildPersonalizedNotifications(tx, {
+        dealId,
+        dealTitle,
+        type: NotificationType.OWNER_CHANGED,
+        actorId,
+        targetUserId: newOwnerId,
+        recipientUserIds,
+      });
+      await notificationRepository.createActivityNotifications(tx, notifications);
 
       return mapDealToResponse(updatedDeal);
     });

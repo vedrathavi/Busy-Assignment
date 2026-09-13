@@ -10,9 +10,30 @@ interface DropdownContextType {
 
 const DropdownContext = React.createContext<DropdownContextType | null>(null);
 
-export function DropdownMenu({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
+export function DropdownMenu({
+  children,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  children: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
   const triggerRef = React.useRef<HTMLDivElement>(null);
+
+  const setOpen = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
+    (value) => {
+      const nextValue = typeof value === 'function' ? value(open) : value;
+      if (!isControlled) {
+        setUncontrolledOpen(nextValue);
+      }
+      onOpenChange?.(nextValue);
+    },
+    [isControlled, open, onOpenChange]
+  );
 
   return (
     <DropdownContext.Provider value={{ open, setOpen, triggerRef }}>
