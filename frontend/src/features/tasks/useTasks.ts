@@ -55,7 +55,8 @@ export function useCreateTask() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'detail', variables.dealId] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -68,7 +69,8 @@ export function useUpdateTask() {
     onSuccess: (task) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'detail', task.dealId] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -82,7 +84,8 @@ export function useCompleteTask() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'detail', task.dealId] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'history', task.dealId] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -94,10 +97,12 @@ export function useReopenTask() {
     onSuccess: (task) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'detail', task.dealId] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
+
 
 export function useDeleteTask() {
   const queryClient = useQueryClient();

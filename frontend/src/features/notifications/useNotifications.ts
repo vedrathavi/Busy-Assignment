@@ -100,6 +100,7 @@ export function useMarkNotificationRead() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications', 'count', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['notifications', 'list', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent', user?.id] });
     },
   });
 }
@@ -113,6 +114,8 @@ export function useMarkAllNotificationsRead() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications', 'count', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['notifications', 'list', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent', user?.id] });
     },
   });
 }
+

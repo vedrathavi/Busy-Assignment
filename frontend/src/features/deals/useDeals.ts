@@ -58,7 +58,8 @@ export function useCreateDeal() {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['companies', 'detail', newDeal.companyId] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -153,7 +154,7 @@ export function useUpdateDeal() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'history'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
     },
   });
 }
@@ -187,7 +188,8 @@ export function useTransitionDealStage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -218,7 +220,8 @@ export function useReopenDeal() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -284,7 +287,8 @@ export function useAddCollaborator() {
       addCollaboratorApi(dealId, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -329,7 +333,8 @@ export function useRemoveCollaborator() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['deals', 'collaborators'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -351,7 +356,8 @@ export function useAddDealNote() {
       addDealNoteApi(dealId, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deals', 'history'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -363,7 +369,8 @@ export function useBulkAdvanceDeals() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
@@ -376,10 +383,12 @@ export function useBulkReassignDeals() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'recent'] });
     },
   });
 }
+
 
 export function useExportDealsCsv() {
   return useMutation({
