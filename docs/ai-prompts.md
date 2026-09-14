@@ -49,6 +49,7 @@ Each significant entry records:
 | **UX Refinement** (Prompt 28) | Task & Notification UX Refinement | Implement dual task perspectives (`assigned_to_me`, `assigned_by_me`, `team`), collaborator completion note propagation in notifications, and server-side pagination. |
 | **Multi-Assignee** (Prompt 29) | Multi-Assignee Tasks with Immutable Assignment | Relational `TaskAssignee` join model, creation-time frozen assignment list, strictly deal-scoped boundaries ($\text{requestedAssignees} \subseteq \text{deal.ownerId} \cup \text{collaborators}$), independent completions, and 20 Vitest tests. |
 | **Performance Optimization** (Prompt 30) | Performance Optimization & Bundle Hardening Pass | Route-level code splitting (58.6% bundle reduction), targeted TanStack Query invalidation, scalar projection for background alert polling, and strict test isolation fix for 293/293 passing suite. |
+| **Demo Dataset** (Prompt 31) | Demo Seed Architecture | Two-tier UUID namespace demo dataset (3 reps, 18 companies, 51 deals, 91 tasks, 351 notifications) seeded idempotently with safe reset script; baseline 100% intact, 293/293 tests still passing. |
 
 ---
 
@@ -1289,3 +1290,52 @@ Each significant entry records:
 
 - **Final outcome**:
   Performance optimization and bundle hardening pass complete with 58.6% lighter entry bundle, optimized background polling, and verified 293/293 passing test suite.
+
+---
+
+## Prompt 31 — Demo Dataset: Demo Seed Architecture
+
+**Date**: 2026-09-14 | **Phase**: Demo Enrichment
+
+- **Problem / Task**:
+  The application was functionally complete and tested (293/293 tests passing). The existing deterministic baseline seed (used by all integration tests) contained only the minimum data required to exercise correctness invariants — not a rich, realistic dataset suitable for a live recruiter demo. The task was to create a completely separate, additive demo dataset that coexists safely with the core test fixtures without touching any baseline records.
+
+- **User Intent**:
+  Produce a realistic demo environment: a full 6-person sales team, 18 companies, 51 active deals across all pipeline stages, 91 tasks, 351 activity notifications, and deal alerts — all seeded idempotently into the live database without disturbing the existing 293 integration tests or baseline data integrity.
+
+- **Constraints enforced**:
+  - Do NOT modify existing baseline records (organizations, teams, baseline users, baseline companies, baseline deals, or baseline history events).
+  - Do NOT re-run the core `prisma db seed` command.
+  - Do NOT change the database schema or Prisma migrations.
+  - All demo records must use a distinct reserved UUID namespace (`50000000-*`, `60000000-*`, `70000000-*`, etc.) that can never collide with baseline UUIDs.
+  - The seed must be fully idempotent (safe to run multiple times via `upsert`).
+  - A corresponding reset script must cleanly remove only demo records, leaving the baseline 100% intact.
+
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/scripts/seed-demo.ts`:
+    - Deterministic two-tier UUID architecture separating `BASELINE_DATA` constants (read-only references) from `DEMO_DATA` UUID namespaces (`50000000-*`, `60000000-*`, `70000000-*`, `80000000-*`, `90000000-*`).
+    - Seeded 3 additional Sales Reps (`Rohan Mehta`, `Elena Rostova`, `David Kim`) using `upsert`.
+    - Seeded 17 new companies (+ 1 archived) with realistic Indian enterprise names, domains, and industry tags.
+    - Seeded 51 active deals distributed across 6 reps with all 6 pipeline stages represented (`NEW`, `QUALIFIED`, `PROPOSAL`, `NEGOTIATION`, `WON`, `LOST`), including INR deal values and realistic close dates.
+    - Seeded deal collaborators, deal history events, and deal alerts using safe `in`-operator UUID arrays.
+    - Seeded 91 tasks across 6 reps with mixed priorities, due dates (including overdue and due-today entries for visual richness), and completion states.
+    - Seeded 351 activity notifications across all users with realistic read/unread distributions.
+  - `backend/src/scripts/reset-demo.ts`:
+    - Safe cleanup script that deletes only records whose IDs are in explicitly defined demo UUID arrays.
+    - Uses `in` operator (not `startsWith`, which Prisma does not support on UUIDs) for all `deleteMany` calls.
+    - Respects relational cascade order: notifications → task completions → tasks → deal history → deal alerts → collaborators → deals → companies → users.
+  - `backend/src/scripts/validate-demo.ts`:
+    - Comprehensive statistics reporter that queries team/user counts, company counts, deal distribution by stage and rep, task completion ratios, notification read states, and deal alert status.
+    - Outputs a structured console report for quick verification of dataset health.
+  - `backend/package.json`: Added `seed:demo` (`tsx src/scripts/seed-demo.ts`) and `seed:demo:reset` (`tsx src/scripts/reset-demo.ts`) scripts.
+  - Root `package.json`: Proxied `seed:demo` and `seed:demo:reset` to the backend workspace.
+
+- **Human review / testing**:
+  - Ran `npm run seed:demo` — completed successfully with 0 errors.
+  - Ran `npx tsx src/scripts/validate-demo.ts` — confirmed: 7 users, 18 companies, 51 active deals (all 6 stages covered), 91 tasks, 351 notifications, 4 deal alerts, 13 collaborator links.
+  - Ran `npm run seed:demo` a second time — confirmed full idempotency (upserts, no duplicate key violations).
+  - Confirmed `npm test` in `backend/` still reports **293/293 tests passing, 12/12 suites passing** with zero regressions.
+  - Database baseline integrity verified via `verify-baseline.ts` — 100% unchanged.
+
+- **Final outcome**:
+  A rich, realistic demo dataset is live in the database. The demo now shows a full 6-person sales team with ₹79+ lakh open pipeline, cross-stage deal distribution, active tasks with overdue and due-today entries, and per-user notification inboxes with realistic read/unread states. The existing test baseline is 100% intact and all 293 integration tests continue to pass.
