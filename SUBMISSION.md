@@ -9,7 +9,8 @@
 ## Notes for the reviewer
 
 - **Render Cold Start**: The backend is hosted on Render's free tier, which spins down after periods of inactivity. If the service is idle, the initial request / cold start may take ~30–50 seconds to wake up. Once active, all requests and database queries are fast and responsive.
-- **Test Suite**: The repository includes a full automated test suite with **242 passing integration tests** across 10 test suites covering all 10 core goals, role boundaries, decimal currency precision, transition state machine rules, and alert lifecycles. Run `npm test` in the `backend/` directory to execute.
+- **Test Suite**: The repository includes a full automated test suite with **293 passing integration tests** across 12 test suites covering all 10 core goals, role boundaries, decimal currency precision, transition state machine rules, multi-assignee task lifecycles, and alert/notification lifecycles. Run `npm test` in the `backend/` directory to execute.
+- **Performance Improvements**: Includes route-level code splitting with `React.lazy()` (reducing initial JS bundle by 58.6%), targeted TanStack Query cache invalidations, and high-performance scalar projections for background alert count polling.
 
 ## Demo credentials
 

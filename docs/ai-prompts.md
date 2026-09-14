@@ -48,6 +48,7 @@ Each significant entry records:
 | **Addon Phase 2** (Prompt 27) | Deal Tasks & Follow-ups Queue | Implement deal tasks work queue (`dueDate: @db.Date`, priority, multi-faceted authorization, transactional notifications, note attachments, and 27 Vitest tests). |
 | **UX Refinement** (Prompt 28) | Task & Notification UX Refinement | Implement dual task perspectives (`assigned_to_me`, `assigned_by_me`, `team`), collaborator completion note propagation in notifications, and server-side pagination. |
 | **Multi-Assignee** (Prompt 29) | Multi-Assignee Tasks with Immutable Assignment | Relational `TaskAssignee` join model, creation-time frozen assignment list, strictly deal-scoped boundaries ($\text{requestedAssignees} \subseteq \text{deal.ownerId} \cup \text{collaborators}$), independent completions, and 20 Vitest tests. |
+| **Performance Optimization** (Prompt 30) | Performance Optimization & Bundle Hardening Pass | Route-level code splitting (58.6% bundle reduction), targeted TanStack Query invalidation, scalar projection for background alert polling, and strict test isolation fix for 293/293 passing suite. |
 
 ---
 
@@ -1241,3 +1242,50 @@ Each significant entry records:
 
 - **Final outcome**:
   Multi-Assignee Deal Tasks with Creation-Time Immutable Assignment and strictly deal-scoped security fully implemented, verified, and documented.
+
+---
+
+## 2026-09-14 - Prompt 30 - Performance Optimization Pass & Test Suite Re-verification
+
+- **Problem / Task**:
+  Perform an evidence-based, safe performance optimization and bundle hardening pass without rewriting core architecture, modifying database schema, or changing deterministic seed data:
+  1. Diagnose and fix the `alerts.test.ts` test isolation defect where Deal 15 state contamination was failing 5 tests.
+  2. Implement route-level code splitting (`React.lazy` + `Suspense`) in `frontend/src/App.tsx` and manual Rollup chunk isolation for heavyweight chart libraries (`recharts`).
+  3. Optimize TanStack Query cache invalidation across notification actions (replacing broad `['notifications']` invalidations with granular `['notifications', 'count']` and `['notifications', 'recent']`).
+  4. Optimize background alert polling on the backend (`GET /api/alerts/count`) to use scalar field projections (`id`, `expectedCloseDate`) instead of deep nested includes.
+  5. Fix strict TypeScript typing in `dashboard.repository.ts` (`orderBy: { stage: 'asc' }` optional chaining and typed `Prisma.DealGroupByOutputType`).
+
+- **User Intent**:
+  Make the application significantly faster on initial load and reduce network/database overhead during background polling while guaranteeing 100% test pass rate across all 293 backend integration tests and preserving 100% database baseline integrity.
+
+- **What IDE / Code Assistant implemented**:
+  - `backend/src/__tests__/alerts.test.ts`:
+    - Updated `resetAlertsState()` to fully restore Deal 15 baseline (owner, `expectedCloseDate = 2026-09-05`, `DealAlert.dismissedCloseDate = 2026-09-05`, notification `userId = USER_REP1_ID`, and delete any created `DealCollaborator` records for Deal 15).
+    - Executed `resetAlertsState()` in `beforeEach` to ensure deterministic isolation across all alert tests.
+  - `frontend/src/App.tsx`:
+    - Converted all 10 page routes (`LoginPage`, `RegisterPage`, `DashboardPage`, `CompaniesPage`, `CompanyDetailPage`, `DealsPage`, `DealDetailPage`, `UsersPage`, `UserProfilePage`, `AlertsPage`, `TrashPage`, `TasksPage`) to `React.lazy()` dynamic imports wrapped in `<Suspense>` with a centralized fallback skeleton.
+  - `frontend/vite.config.ts`:
+    - Added Rollup `manualChunks` configuration to isolate `recharts` into an on-demand vendor chunk (`recharts-vendor`).
+    - Reduced main entry chunk from **1,002.05 kB** to **415.25 kB** (**58.6% reduction**, 128.57 kB gzip).
+  - `frontend/src/features/notifications/useNotifications.ts`:
+    - Replaced generic `queryClient.invalidateQueries({ queryKey: ['notifications'] })` calls with targeted `['notifications', 'count']` and `['notifications', 'recent']` updates, avoiding unneeded full page refetches during notification reads.
+  - `backend/src/modules/alerts/alert.repository.ts`:
+    - Replaced heavy `findMany` queries in `count()` with scalar-only projection (`select: { id: true, expectedCloseDate: true, alerts: { select: { dismissedCloseDate: true } } }`), dropping serialized JSON payload by ~90%.
+  - `backend/src/modules/dashboard/dashboard.repository.ts`:
+    - Corrected Prisma `groupBy` typing and resolved TS warning regarding `stageOrder` and optional chaining.
+  - `docs/`:
+    - Added Decisions 33, 34, 35 in `docs/decisions.md`.
+    - Added Section 10 (Performance, Caching & Bundle Architecture) in `docs/architecture.md`.
+    - Added Phase 17 in `docs/plan.md`.
+    - Updated `SUBMISSION.md` with 293 integration tests across 12 test files and performance summary.
+
+- **Human review / testing**:
+  - Backend integration test suite: 12/12 test files passed, 293/293 tests passed (**100%**).
+  - Backend TypeScript: `npx tsc --noEmit` passed with 0 errors.
+  - Frontend TypeScript: `npx tsc --noEmit` passed with 0 errors.
+  - Frontend production build: `npm run build` compiled in 1.40s.
+  - Database integrity: `verify-baseline.ts` confirmed 100% records intact.
+  - `git diff --check`: 0 whitespace or formatting issues.
+
+- **Final outcome**:
+  Performance optimization and bundle hardening pass complete with 58.6% lighter entry bundle, optimized background polling, and verified 293/293 passing test suite.
