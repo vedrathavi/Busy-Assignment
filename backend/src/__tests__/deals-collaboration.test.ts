@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../database/prisma';
 import { signToken } from '../utils/jwt';
-import { DealStage, HistoryType, UserRole } from '@prisma/client';
+import { HistoryType } from '@prisma/client';
 
 describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tests', { timeout: 30000 }, () => {
   const app = createApp();
@@ -40,19 +40,6 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
     { dealId: '30000000-0000-4000-8000-000000000013', userId: USER_REP1_ID },
   ];
 
-  const trackedHistoryIds = new Set<string>();
-
-  const trackHistoryOnDeal = async (dealId: string) => {
-    const histories = await prisma.dealHistory.findMany({
-      where: {
-        dealId,
-        type: { in: [HistoryType.COLLABORATOR_ADDED, HistoryType.COLLABORATOR_REMOVED, HistoryType.NOTE_ADDED, HistoryType.OWNER_CHANGED] },
-      },
-      select: { id: true },
-    });
-    histories.forEach((h) => trackedHistoryIds.add(h.id));
-  };
-
   const cleanupCollaborators = async () => {
     // Delete only test-added collaborators on Deal 7
     await prisma.dealCollaborator.deleteMany({
@@ -77,17 +64,6 @@ describe('Phase 6: Deal Collaborators, Immutable History & Notes Integration Tes
     await prisma.deal.update({ where: { id: DEALS.d8 }, data: { ownerId: USER_REP2_ID } });
     await prisma.deal.update({ where: { id: DEALS.d10 }, data: { ownerId: USER_REP2_ID } });
     await prisma.deal.update({ where: { id: DEALS.d13 }, data: { ownerId: USER_REP3_ID } });
-
-    // Delete only tracked test history events if any were recorded
-    const historyIds = Array.from(trackedHistoryIds);
-    if (historyIds.length > 0) {
-      await prisma.dealHistory.deleteMany({
-        where: {
-          id: { in: historyIds },
-        },
-      });
-      trackedHistoryIds.clear();
-    }
   };
 
   beforeAll(async () => {

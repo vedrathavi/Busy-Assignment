@@ -169,10 +169,3 @@ export interface BulkReassignInput {
 export interface BulkAdvanceInput {
   dealIds: string[];
 }
-
-export interface OpenDealExportRecord {
-  companyName: string;
-  stage: DealStage;
-  value: string;
-  weightedValue: string;
-}

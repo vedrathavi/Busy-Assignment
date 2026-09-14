@@ -112,7 +112,7 @@ export class TaskPolicy {
    * Evaluates if the user can complete their own assignment on a task.
    * - The user must be one of the assignees on the task.
    */
-  canComplete(user: AuthUser, task: TaskContext, deal: DealContext): boolean {
+  canComplete(user: AuthUser, task: TaskContext): boolean {
     if (user.teamId !== task.teamId) {
       return false;
     }
@@ -124,7 +124,7 @@ export class TaskPolicy {
    * Evaluates if the user can reopen their own completed assignment on a task.
    * - The user must be one of the assignees on the task.
    */
-  canReopen(user: AuthUser, task: TaskContext, deal: DealContext): boolean {
+  canReopen(user: AuthUser, task: TaskContext): boolean {
     if (user.teamId !== task.teamId) {
       return false;
     }

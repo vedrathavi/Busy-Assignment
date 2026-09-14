@@ -48,12 +48,8 @@ describe('Phase 8: Deal Search, Filtering, Sorting & Pagination Integration Test
     d18_softDeleted: '30000000-0000-4000-8000-000000000018', // Soft-deleted deal
   };
 
-  const ALL_SEEDED_DEAL_IDS = Object.values(DEALS);
-
   let managerToken: string;
   let rep1Token: string; // Alex
-  let rep2Token: string; // Priya
-  let rep3Token: string; // Marcus
 
   const seededCollaborators = [
     { dealId: DEALS.d3, userId: USER_REP1_ID },
@@ -65,6 +61,20 @@ describe('Phase 8: Deal Search, Filtering, Sorting & Pagination Integration Test
   ];
 
   const resetDeals = async () => {
+    const nonSeededDeals = await prisma.deal.findMany({
+      where: { id: { notIn: Object.values(DEALS) } },
+      select: { id: true },
+    });
+    if (nonSeededDeals.length > 0) {
+      const nonSeededIds = nonSeededDeals.map((d) => d.id);
+      await prisma.dealAlert.deleteMany({ where: { dealId: { in: nonSeededIds } } });
+      await prisma.dealHistory.deleteMany({ where: { dealId: { in: nonSeededIds } } });
+      await prisma.taskAssignee.deleteMany({ where: { task: { dealId: { in: nonSeededIds } } } });
+      await prisma.task.deleteMany({ where: { dealId: { in: nonSeededIds } } });
+      await prisma.dealCollaborator.deleteMany({ where: { dealId: { in: nonSeededIds } } });
+      await prisma.deal.deleteMany({ where: { id: { in: nonSeededIds } } });
+    }
+
     await prisma.$transaction([
       // Restore stages, owners, and closedAt for all seed deals
       prisma.deal.update({
@@ -153,8 +163,6 @@ describe('Phase 8: Deal Search, Filtering, Sorting & Pagination Integration Test
   beforeAll(async () => {
     managerToken = signToken({ sub: USER_MANAGER_ID });
     rep1Token    = signToken({ sub: USER_REP1_ID });
-    rep2Token    = signToken({ sub: USER_REP2_ID });
-    rep3Token    = signToken({ sub: USER_REP3_ID });
 
     await resetDeals();
   }, 30000);

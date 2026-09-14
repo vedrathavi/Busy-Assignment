@@ -40,11 +40,8 @@ describe('Phase 9: Dashboard Pipeline Metrics & Analytics Integration Tests', { 
     d18_softDeleted: '30000000-0000-4000-8000-000000000018', // Soft-deleted deal (Priya), NEW, 45000.00
   };
 
-  const ALL_SEEDED_DEAL_IDS = Object.values(DEALS);
-
   let managerToken: string;
   let rep1Token: string; // Alex
-  let rep2Token: string; // Priya
 
   const seededCollaborators = [
     { dealId: DEALS.d3, userId: USER_REP1_ID },
@@ -144,7 +141,6 @@ describe('Phase 9: Dashboard Pipeline Metrics & Analytics Integration Tests', { 
   beforeAll(async () => {
     managerToken = signToken({ sub: USER_MANAGER_ID });
     rep1Token    = signToken({ sub: USER_REP1_ID });
-    rep2Token    = signToken({ sub: USER_REP2_ID });
 
     await resetDeals();
   }, 30000);

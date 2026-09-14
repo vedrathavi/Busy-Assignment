@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { prisma } from '../database/prisma';
 import { signToken } from '../utils/jwt';
-import { DealStage, HistoryType, NotificationType, UserRole } from '@prisma/client';
+import { DealStage, HistoryType, NotificationType } from '@prisma/client';
 
 describe('Phase 10: Notification Foundation & Overdue DealAlerts Integration Tests', { timeout: 30000 }, () => {
   const app = createApp();
@@ -13,10 +13,6 @@ describe('Phase 10: Notification Foundation & Overdue DealAlerts Integration Tes
   const USER_REP1_ID    = '10000000-0000-4000-8000-000000000002'; // Alex Rivera (Sales Rep)
   const USER_REP2_ID    = '10000000-0000-4000-8000-000000000003'; // Priya Sharma (Sales Rep)
   const USER_REP3_ID    = '10000000-0000-4000-8000-000000000004'; // Marcus Chen (Sales Rep)
-
-  const TEAM_ID         = '00000000-0000-4000-8000-000000000002';
-  const COMPANY_ACME    = '20000000-0000-4000-8000-000000000001';
-  const COMPANY_BEACON  = '20000000-0000-4000-8000-000000000007';
 
   // Seed Deal UUIDs
   const DEALS = {
@@ -43,10 +39,45 @@ describe('Phase 10: Notification Foundation & Overdue DealAlerts Integration Tes
   });
 
   const resetAlertsState = async () => {
-    // Reset Deal 14 and 15 expectedCloseDates and DealAlerts to pristine seed state
+    // 1. Clean any test-created deal alerts on non-seeded deals (e.g. Deal 14)
+    const extraAlerts = await prisma.dealAlert.findMany({
+      where: { dealId: { not: DEALS.d15 } },
+      select: { id: true, notificationId: true },
+    });
+    for (const a of extraAlerts) {
+      await prisma.dealAlert.delete({ where: { id: a.id } });
+      if (a.notificationId !== '50000000-0000-4000-8000-000000000001') {
+        await prisma.notification.deleteMany({ where: { id: a.notificationId } });
+      }
+    }
+
+    // 2. Remove any deal collaborators on Deal 15 added during tests
+    await prisma.dealCollaborator.deleteMany({
+      where: { dealId: DEALS.d15 },
+    });
+
+    // 3. Restore Notification for Deal 15 overdue alert to seed state (recipient = Alex)
+    await prisma.notification.upsert({
+      where: { id: '50000000-0000-4000-8000-000000000001' },
+      update: {
+        userId: USER_REP1_ID,
+        type: NotificationType.DEAL_OVERDUE,
+        readAt: null,
+      },
+      create: {
+        id: '50000000-0000-4000-8000-000000000001',
+        userId: USER_REP1_ID,
+        type: NotificationType.DEAL_OVERDUE,
+        readAt: null,
+        createdAt: new Date('2026-09-06T09:00:00.000Z'),
+      },
+    });
+
+    // 4. Reset Deal 14 and 15 properties to pristine seed state
     await prisma.deal.update({
       where: { id: DEALS.d14 },
       data: {
+        ownerId: USER_REP1_ID,
         expectedCloseDate: new Date('2026-09-01'),
         stage: DealStage.NEGOTIATION,
         deletedAt: null,
@@ -63,7 +94,23 @@ describe('Phase 10: Notification Foundation & Overdue DealAlerts Integration Tes
       },
     });
 
-    // Reset other deals that may have had temporary date changes during test
+    // 5. Restore DealAlert for Deal 15 with seed dismissedCloseDate
+    await prisma.dealAlert.upsert({
+      where: { dealId: DEALS.d15 },
+      update: {
+        dismissedCloseDate: new Date('2026-09-05'),
+        dismissedAt: new Date('2026-09-06T09:00:00.000Z'),
+      },
+      create: {
+        id: '60000000-0000-4000-8000-000000000001',
+        notificationId: '50000000-0000-4000-8000-000000000001',
+        dealId: DEALS.d15,
+        dismissedCloseDate: new Date('2026-09-05'),
+        dismissedAt: new Date('2026-09-06T09:00:00.000Z'),
+      },
+    });
+
+    // 6. Reset other deals that may have had temporary date changes during test
     await prisma.deal.update({
       where: { id: DEALS.d3 },
       data: { expectedCloseDate: new Date('2026-10-15') },
@@ -78,19 +125,9 @@ describe('Phase 10: Notification Foundation & Overdue DealAlerts Integration Tes
       where: { id: DEALS.d18_softDeleted },
       data: { expectedCloseDate: new Date('2026-09-10') },
     });
-
-    // Clean exact test-created alert on Deal 14 if created
-    const d14Alert = await prisma.dealAlert.findUnique({
-      where: { dealId: DEALS.d14 },
-      select: { id: true, notificationId: true },
-    });
-    if (d14Alert) {
-      await prisma.dealAlert.delete({ where: { id: d14Alert.id } });
-      await prisma.notification.delete({ where: { id: d14Alert.notificationId } });
-    }
   };
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     await resetAlertsState();
   });
 

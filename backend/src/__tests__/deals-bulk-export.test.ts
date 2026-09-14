@@ -34,28 +34,6 @@ describe('Phase 7: Bulk Operations & Pipeline CSV Export Integration Tests', { t
   let managerToken: string;
   let rep1Token: string; // Alex
   let rep2Token: string; // Priya
-  let rep3Token: string; // Marcus
-
-  const ALL_SEEDED_DEAL_IDS = [
-    '30000000-0000-4000-8000-000000000001',
-    '30000000-0000-4000-8000-000000000002',
-    '30000000-0000-4000-8000-000000000003',
-    '30000000-0000-4000-8000-000000000004',
-    '30000000-0000-4000-8000-000000000005',
-    '30000000-0000-4000-8000-000000000006',
-    '30000000-0000-4000-8000-000000000007',
-    '30000000-0000-4000-8000-000000000008',
-    '30000000-0000-4000-8000-000000000009',
-    '30000000-0000-4000-8000-000000000010',
-    '30000000-0000-4000-8000-000000000011',
-    '30000000-0000-4000-8000-000000000012',
-    '30000000-0000-4000-8000-000000000013',
-    '30000000-0000-4000-8000-000000000014',
-    '30000000-0000-4000-8000-000000000015',
-    '30000000-0000-4000-8000-000000000016',
-    '30000000-0000-4000-8000-000000000017',
-    '30000000-0000-4000-8000-000000000018',
-  ];
 
   const seededCollaborators = [
     { dealId: DEALS.d3, userId: USER_REP1_ID },
@@ -122,7 +100,6 @@ describe('Phase 7: Bulk Operations & Pipeline CSV Export Integration Tests', { t
     managerToken = signToken({ sub: USER_MANAGER_ID });
     rep1Token    = signToken({ sub: USER_REP1_ID });
     rep2Token    = signToken({ sub: USER_REP2_ID });
-    rep3Token    = signToken({ sub: USER_REP3_ID });
 
     await resetDeals();
   }, 30000);
