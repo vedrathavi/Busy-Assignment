@@ -20,6 +20,9 @@
 | **Sales Rep (Alex)** | `alex@busy.com` | `Password123!` | Scoped to owned companies/deals and deal collaborations (e.g. Deal 3, Deal 10) |
 | **Sales Rep (Priya)** | `priya@busy.com` | `Password123!` | Scoped to owned companies/deals and deal collaborations (e.g. Deal 3, Deal 4) |
 | **Sales Rep (Marcus)** | `marcus@busy.com` | `Password123!` | Scoped to owned companies/deals |
+| **Sales Rep (Rohan)** | `rohan@busy.com` | `Password123!` | Scoped to owned companies/deals |
+| **Sales Rep (Elena)** | `elena@busy.com` | `Password123!` | Scoped to owned companies/deals |
+| **Sales Rep (David)** | `david@busy.com` | `Password123!` | Scoped to owned companies/deals |
 
 ## Stack
 
