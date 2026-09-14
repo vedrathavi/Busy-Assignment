@@ -130,19 +130,61 @@ export class AlertRepository {
 
   /**
    * Retrieves overdue alert counts (active, total, dismissed, unread).
+   * Uses a lightweight projection selecting only required date & read status fields.
    */
   public async getOverdueAlertsCount(user: AuthUser): Promise<AlertCountResponse> {
-    const allAlerts = await this.getOverdueAlerts(user, 'all');
-    const activeAlerts = allAlerts.filter((a) => !a.isDismissed);
-    const dismissedAlerts = allAlerts.filter((a) => a.isDismissed);
-    const unreadCount = activeAlerts.filter((a) => a.readAt === null).length;
+    const todayUtc = this.getTodayUtc();
+    const visibilityFilter = this.dealRepository.buildVisibilityFilter(user, false);
+
+    const deals = await prisma.deal.findMany({
+      where: {
+        ...visibilityFilter,
+        stage: { in: OPEN_STAGES },
+        expectedCloseDate: { lt: todayUtc },
+      },
+      select: {
+        expectedCloseDate: true,
+        alert: {
+          select: {
+            dismissedCloseDate: true,
+            notification: {
+              select: {
+                readAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    let activeCount = 0;
+    let dismissedCount = 0;
+    let unreadCount = 0;
+
+    for (const deal of deals) {
+      const isDismissed = Boolean(
+        deal.alert?.dismissedCloseDate &&
+        formatDate(deal.alert.dismissedCloseDate) === formatDate(deal.expectedCloseDate)
+      );
+
+      if (isDismissed) {
+        dismissedCount++;
+      } else {
+        activeCount++;
+        if (deal.alert?.notification?.readAt == null) {
+          unreadCount++;
+        }
+      }
+    }
+
     return {
-      count: activeAlerts.length,
+      count: activeCount,
       unreadCount,
-      totalCount: allAlerts.length,
-      dismissedCount: dismissedAlerts.length,
+      totalCount: deals.length,
+      dismissedCount,
     };
   }
+
 
   /**
    * Finds a deal by ID with its team and alert relations for dismissal validation.
