@@ -95,6 +95,9 @@ export class DashboardRepository {
         _sum: {
           value: true,
         },
+        orderBy: {
+          stage: 'asc',
+        },
       }),
 
       // B. Owner groups for open deals
@@ -154,8 +157,8 @@ export class DashboardRepository {
     const stageCountMap = new Map<DealStage, { count: number; sumValue: Prisma.Decimal }>();
 
     for (const group of stageGroups) {
-      const count = group._count._all;
-      const sumValue = group._sum.value ?? new Prisma.Decimal(0);
+      const count = (group._count as { _all?: number } | undefined)?._all ?? 0;
+      const sumValue = group._sum?.value ?? new Prisma.Decimal(0);
       stageCountMap.set(group.stage, { count, sumValue });
     }
 
@@ -193,9 +196,10 @@ export class DashboardRepository {
       openDealsByOwner = ownerGroups.map((g) => ({
         ownerId: g.ownerId,
         ownerName: ownerNameMap.get(g.ownerId) ?? 'Unknown User',
-        count: g._count._all,
+        count: (g._count as { _all?: number } | undefined)?._all ?? 0,
       }));
     }
+
 
     // 6. Process Won Deals Per Week (Bin into 8 half-open buckets)
     for (const deal of wonDealsIn8Weeks) {
